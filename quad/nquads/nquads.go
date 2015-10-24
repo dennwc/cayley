@@ -32,6 +32,16 @@ import (
 	"github.com/google/cayley/quad"
 )
 
+func init() {
+	quad.RegisterFormat(quad.Format{
+		Name:   "nquads",
+		Ext:    []string{".nq", ".nt"},
+		Mime:   []string{"application/n-quads", "application/n-triples"},
+		Reader: func(r io.Reader) quad.ReadCloser { return NewDecoder(r) },
+		Writer: func(w io.Writer) quad.WriteCloser { return NewEncoder(w) },
+	})
+}
+
 // Decoder implements N-Quad document parsing according to the RDF
 // 1.1 N-Quads specification.
 type Decoder struct {
@@ -45,8 +55,8 @@ func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{r: bufio.NewReader(r)}
 }
 
-// Unmarshal returns the next valid N-Quad as a quad.Quad, or an error.
-func (dec *Decoder) Unmarshal() (quad.Quad, error) {
+// ReadQuad returns the next valid N-Quad as a quad.Quad, or an error.
+func (dec *Decoder) ReadQuad() (quad.Quad, error) {
 	dec.line = dec.line[:0]
 	var line []byte
 	for {
@@ -70,9 +80,17 @@ func (dec *Decoder) Unmarshal() (quad.Quad, error) {
 		return quad.Quad{}, fmt.Errorf("failed to parse %q: %v", dec.line, err)
 	}
 	if !q.IsValid() {
-		return dec.Unmarshal()
+		return dec.ReadQuad()
 	}
 	return q, nil
+}
+func (dec *Decoder) Close() error { return nil }
+
+// Unmarshal returns the next valid N-Quad as a quad.Quad, or an error.
+//
+// Deprecated: use ReadQuad instead.
+func (dec *Decoder) Unmarshal() (quad.Quad, error) {
+	return dec.ReadQuad()
 }
 
 func unEscape(r []rune, isEscaped bool) string {
@@ -130,3 +148,35 @@ func unEscape(r []rune, isEscaped bool) string {
 
 	return buf.String()
 }
+
+// NewEncoder returns an N-Quad encoder that writes its output to the
+// provided io.Writer.
+func NewEncoder(w io.Writer) *Encoder { return &Encoder{w: w} }
+
+// Encoder implements N-Quad document generator according to the RDF
+// 1.1 N-Quads specification.
+type Encoder struct {
+	w   io.Writer
+	err error
+}
+
+func (enc *Encoder) writeValue(s string) {
+	if enc.err != nil {
+		return
+	}
+	_, enc.err = enc.w.Write([]byte(s + " ")) // TODO: proper escaping
+}
+func (enc *Encoder) WriteQuad(q quad.Quad) error {
+	enc.writeValue(q.Subject)
+	enc.writeValue(q.Predicate)
+	enc.writeValue(q.Object)
+	if q.Label != "" {
+		enc.writeValue(q.Label)
+	}
+	if enc.err != nil {
+		return enc.err
+	}
+	_, enc.err = enc.w.Write([]byte(".\n"))
+	return enc.err
+}
+func (enc *Encoder) Close() error { return enc.err }

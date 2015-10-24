@@ -33,6 +33,15 @@ import (
 	"github.com/google/cayley/quad"
 )
 
+func init() {
+	quad.RegisterFormat(quad.Format{
+		Name: "cquads",
+		//Ext:    []string{".nq", ".nt"},
+		//Mime:   []string{"application/n-quads", "application/n-triples"},
+		Reader: func(r io.Reader) quad.ReadCloser { return NewDecoder(r) },
+	})
+}
+
 // Decoder implements simplified N-Quad document parsing.
 type Decoder struct {
 	r    *bufio.Reader
@@ -45,8 +54,8 @@ func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{r: bufio.NewReader(r)}
 }
 
-// Unmarshal returns the next valid N-Quad as a quad.Quad, or an error.
-func (dec *Decoder) Unmarshal() (quad.Quad, error) {
+// ReadQuad returns the next valid N-Quad as a quad.Quad, or an error.
+func (dec *Decoder) ReadQuad() (quad.Quad, error) {
 	dec.line = dec.line[:0]
 	var line []byte
 	for {
@@ -70,9 +79,17 @@ func (dec *Decoder) Unmarshal() (quad.Quad, error) {
 		return quad.Quad{}, fmt.Errorf("failed to parse %q: %v", dec.line, err)
 	}
 	if !q.IsValid() {
-		return dec.Unmarshal()
+		return dec.ReadQuad()
 	}
 	return q, nil
+}
+func (dec *Decoder) Close() error { return nil }
+
+// Unmarshal returns the next valid N-Quad as a quad.Quad, or an error.
+//
+// Deprecated: use ReadQuad instead.
+func (dec *Decoder) Unmarshal() (quad.Quad, error) {
+	return dec.ReadQuad()
 }
 
 func unEscape(r []rune, isQuoted, isEscaped bool) string {

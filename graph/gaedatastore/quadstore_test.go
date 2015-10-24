@@ -86,7 +86,7 @@ func makeTestStore(data []quad.Quad, opts graph.Options) (graph.QuadStore, graph
 			}
 		}
 	}
-	writer.AddQuadSet(data)
+	writer.WriteQuads(data)
 	return qs, writer, ind
 }
 
@@ -169,7 +169,7 @@ func TestAddRemove(t *testing.T) {
 	}
 
 	// Add more quads, some conflicts
-	if err := writer.AddQuadSet(simpleGraphUpdate); err != nil {
+	if _, err := writer.WriteQuads(simpleGraphUpdate); err != nil {
 		t.Errorf("AddQuadSet failed, %v", err)
 	}
 	if qs.Size() != 13 {

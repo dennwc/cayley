@@ -641,7 +641,7 @@ func TestDecoder(t *testing.T) {
 	dec := NewDecoder(strings.NewReader(document))
 	var n int
 	for {
-		q, err := dec.Unmarshal()
+		q, err := dec.ReadQuad()
 		if err != nil {
 			if err != io.EOF {
 				t.Fatalf("Failed to read document: %v", err)
@@ -754,7 +754,7 @@ func TestRDFWorkingGroupSuit(t *testing.T) {
 
 			dec := NewDecoder(tr)
 			for {
-				_, err := dec.Unmarshal()
+				_, err := dec.ReadQuad()
 				if err == io.EOF {
 					break
 				}

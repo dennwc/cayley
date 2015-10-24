@@ -61,7 +61,7 @@ func (api *API) ServeV1Write(w http.ResponseWriter, r *http.Request, _ httproute
 		return jsonResponse(w, 400, err)
 	}
 
-	h.QuadWriter.AddQuadSet(quads)
+	h.QuadWriter.WriteQuads(quads)
 	fmt.Fprintf(w, "{\"result\": \"Successfully wrote %d quads.\"}", len(quads))
 	return 200
 }
@@ -97,7 +97,7 @@ func (api *API) ServeV1WriteNQuad(w http.ResponseWriter, r *http.Request, params
 		block = make([]quad.Quad, 0, blockSize)
 	)
 	for {
-		t, err := dec.Unmarshal()
+		t, err := dec.ReadQuad()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -107,11 +107,11 @@ func (api *API) ServeV1WriteNQuad(w http.ResponseWriter, r *http.Request, params
 		block = append(block, t)
 		n++
 		if len(block) == cap(block) {
-			h.QuadWriter.AddQuadSet(block)
+			h.QuadWriter.WriteQuads(block)
 			block = block[:0]
 		}
 	}
-	h.QuadWriter.AddQuadSet(block)
+	h.QuadWriter.WriteQuads(block)
 
 	fmt.Fprintf(w, "{\"result\": \"Successfully wrote %d quads.\"}", n)
 

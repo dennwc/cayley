@@ -138,7 +138,7 @@ func TestLoadDatabase(t *testing.T) {
 	}
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	w.AddQuad(quad.Quad{
+	w.WriteQuad(quad.Quad{
 		Subject:   "Something",
 		Predicate: "points_to",
 		Object:    "Something Else",
@@ -175,7 +175,7 @@ func TestLoadDatabase(t *testing.T) {
 		t.Errorf("Unexpected horizon value, got:%d expect:1", horizon.Int())
 	}
 
-	w.AddQuadSet(makeQuadSet())
+	w.WriteQuads(makeQuadSet())
 	if s := qs.Size(); s != 12 {
 		t.Errorf("Unexpected quadstore size, got:%d expect:12", s)
 	}
@@ -222,7 +222,7 @@ func TestIterator(t *testing.T) {
 	}
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	w.AddQuadSet(makeQuadSet())
+	w.WriteQuads(makeQuadSet())
 	var it graph.Iterator
 
 	it = qs.NodesAllIterator()
@@ -317,7 +317,7 @@ func TestSetIterator(t *testing.T) {
 	defer qs.Close()
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	w.AddQuadSet(makeQuadSet())
+	w.WriteQuads(makeQuadSet())
 
 	expect := []quad.Quad{
 		{"C", "follows", "B", ""},
@@ -431,7 +431,7 @@ func TestOptimize(t *testing.T) {
 	}
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	w.AddQuadSet(makeQuadSet())
+	w.WriteQuads(makeQuadSet())
 
 	// With an linksto-fixed pair
 	fixed := qs.FixedIterator()
@@ -482,7 +482,7 @@ func TestDeletedFromIterator(t *testing.T) {
 	defer qs.Close()
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	w.AddQuadSet(makeQuadSet())
+	w.WriteQuads(makeQuadSet())
 
 	expect := []quad.Quad{
 		{"E", "follows", "F", ""},

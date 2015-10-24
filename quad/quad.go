@@ -135,7 +135,3 @@ func (q Quad) NQuad() string {
 	}
 	return fmt.Sprintf("%s %s %s %s .", q.Subject, q.Predicate, q.Object, q.Label)
 }
-
-type Unmarshaler interface {
-	Unmarshal() (Quad, error)
-}

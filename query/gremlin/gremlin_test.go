@@ -47,7 +47,7 @@ func makeTestSession(data []quad.Quad) *Session {
 	qs, _ := graph.NewQuadStore("memstore", "", nil)
 	w, _ := graph.NewQuadWriter("single", qs, nil)
 	for _, t := range data {
-		w.AddQuad(t)
+		w.WriteQuad(t)
 	}
 	return NewSession(qs, -1, false)
 }
@@ -324,11 +324,11 @@ func loadGraph(path string, t testing.TB) []quad.Quad {
 	r = f
 
 	dec := cquads.NewDecoder(r)
-	q1, err := dec.Unmarshal()
+	q1, err := dec.ReadQuad()
 	if err != nil {
 		t.Fatalf("Failed to Unmarshal: %v", err)
 	}
-	for ; err == nil; q1, err = dec.Unmarshal() {
+	for ; err == nil; q1, err = dec.ReadQuad() {
 		simpleGraph = append(simpleGraph, q1)
 	}
 	return simpleGraph

@@ -69,11 +69,18 @@ var (
 )
 
 type QuadWriter interface {
+	quad.Writer
+	quad.BatchWriter
+
 	// Add a quad to the store.
+	//
+	// Deprecated: use WriteQuad instead.
 	AddQuad(quad.Quad) error
 
 	// TODO(barakmich): Deprecate in favor of transaction.
 	// Add a set of quads to the store, atomically if possible.
+	//
+	// Deprecated: use WriteQuads instead.
 	AddQuadSet([]quad.Quad) error
 
 	// Removes a quad matching the given one  from the database,

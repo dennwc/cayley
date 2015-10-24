@@ -63,7 +63,7 @@ func TestMemstoreBackedSexp(t *testing.T) {
 	}
 	for _, test := range testQueries {
 		if test.add.IsValid() {
-			w.AddQuad(test.add)
+			w.WriteQuad(test.add)
 		}
 		it := BuildIteratorTreeForQuery(qs, test.query)
 		if it.Type() != test.typ {
@@ -82,8 +82,8 @@ func TestMemstoreBackedSexp(t *testing.T) {
 func TestTreeConstraintParse(t *testing.T) {
 	qs, _ := graph.NewQuadStore("memstore", "", nil)
 	w, _ := graph.NewQuadWriter("single", qs, nil)
-	w.AddQuad(quad.Quad{"i", "like", "food", ""})
-	w.AddQuad(quad.Quad{"food", "is", "good", ""})
+	w.WriteQuad(quad.Quad{"i", "like", "food", ""})
+	w.WriteQuad(quad.Quad{"food", "is", "good", ""})
 	query := "(\"i\"\n" +
 		"(:like\n" +
 		"($a (:is :good))))"
@@ -103,8 +103,8 @@ func TestTreeConstraintParse(t *testing.T) {
 func TestTreeConstraintTagParse(t *testing.T) {
 	qs, _ := graph.NewQuadStore("memstore", "", nil)
 	w, _ := graph.NewQuadWriter("single", qs, nil)
-	w.AddQuad(quad.Quad{"i", "like", "food", ""})
-	w.AddQuad(quad.Quad{"food", "is", "good", ""})
+	w.WriteQuad(quad.Quad{"i", "like", "food", ""})
+	w.WriteQuad(quad.Quad{"food", "is", "good", ""})
 	query := "(\"i\"\n" +
 		"(:like\n" +
 		"($a (:is :good))))"
@@ -128,7 +128,7 @@ func TestMultipleConstraintParse(t *testing.T) {
 		{"i", "like", "beer", ""},
 		{"you", "like", "beer", ""},
 	} {
-		w.AddQuad(tv)
+		w.WriteQuad(tv)
 	}
 	query := `(
 		$a

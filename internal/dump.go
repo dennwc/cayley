@@ -1,13 +1,18 @@
 package internal
 
 import (
-	"fmt"
-	"os"
 	"compress/gzip"
+	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/google/cayley/graph"
-	"github.com/google/cayley/exporter"
+	"github.com/google/cayley/quad"
+	_ "github.com/google/cayley/quad/gml"
+	_ "github.com/google/cayley/quad/graphml"
+	_ "github.com/google/cayley/quad/jsonarr"
+	_ "github.com/google/cayley/quad/nquads"
 )
 
 // Dump the content of the database into a file based
@@ -26,36 +31,34 @@ func Dump(qs graph.QuadStore, outFile, typ string) error {
 		fmt.Printf("dumping db to file %q\n", outFile)
 	}
 
-	var export *exporter.Exporter
+	var w io.Writer = f
 	if filepath.Ext(outFile) == ".gz" {
 		gzip := gzip.NewWriter(f)
 		defer gzip.Close()
-		export = exporter.NewExporter(gzip, qs)
-	} else {
-		export = exporter.NewExporter(f, qs)
+		w = gzip
 	}
+	qr := graph.NewQuadReader(qs) //TODO: add possible support for exporting specific queries only
 
-	//TODO: add possible support for exporting specific queries only
-	switch typ {
-	case "quad":
-		export.ExportQuad()
-	case "json":
-		export.ExportJson()
-	// gml/graphml experimental
-	case "gml":
-		export.ExportGml()
-	case "graphml":
-		export.ExportGraphml()
-	default:
+	if typ == "quad" { // compatibility
+		typ = "nquads"
+	}
+	format := quad.FormatByName(typ)
+	if format == nil {
 		return fmt.Errorf("unknown format %q", typ)
+	} else if format.Writer == nil {
+		return fmt.Errorf("format %q: encoding is not supported", typ)
 	}
-	
-	if export.Err() != nil {
-		return export.Err()
+	qw := format.Writer(w)
+	count, err := quad.Copy(qw, qr)
+	if err != nil {
+		qw.Close()
+		return err
 	}
-
-        if outFile != "-" {
-		fmt.Printf("%d entries were written\n", export.Count())
+	if err = qw.Close(); err != nil {
+		return err
+	}
+	if outFile != "-" {
+		fmt.Printf("%d entries were written\n", count)
 	}
 	return nil
 }

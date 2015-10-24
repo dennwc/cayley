@@ -25,7 +25,7 @@ func Load(qw graph.QuadWriter, cfg *config.Config, path, typ string) error {
 // DecompressAndLoad will load or fetch a graph from the given path, decompress
 // it, and then call the given load function to process the decompressed graph.
 // If no loadFn is provided, db.Load is called.
-func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string, loadFn func(graph.QuadWriter, *config.Config, quad.Unmarshaler) error) error {
+func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string, loadFn func(graph.QuadWriter, *config.Config, quad.Reader) error) error {
 	var r io.Reader
 
 	if path == "" {
@@ -64,7 +64,7 @@ func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string
 		return err
 	}
 
-	var dec quad.Unmarshaler
+	var dec quad.Reader
 	switch typ {
 	case "cquad":
 		dec = cquads.NewDecoder(r)

@@ -69,7 +69,7 @@ func makeTestStore(data []quad.Quad) (*QuadStore, graph.QuadWriter, []pair) {
 			}
 		}
 
-		writer.AddQuad(t)
+		writer.WriteQuad(t)
 	}
 	return qs, writer, ind
 }
