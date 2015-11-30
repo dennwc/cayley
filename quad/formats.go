@@ -21,18 +21,44 @@ type Format struct {
 
 var (
 	formatsByName = make(map[string]*Format)
+	formatsByExt  = make(map[string]*Format)
+	formatsByMime = make(map[string]*Format)
 )
 
 // RegisterFormat registers a new quad-file format.
 func RegisterFormat(f Format) {
-	_, ok := formatsByName[f.Name]
-	if ok {
+	if _, ok := formatsByName[f.Name]; ok {
 		panic(fmt.Errorf("format %s is allready registered", f.Name))
 	}
 	formatsByName[f.Name] = &f
+	for _, m := range f.Ext {
+		if sf, ok := formatsByExt[m]; ok {
+			panic(fmt.Errorf("format %s is allready registered with MIME %s", sf.Name, m))
+		}
+		formatsByExt[m] = &f
+	}
+	for _, m := range f.Mime {
+		if sf, ok := formatsByMime[m]; ok {
+			panic(fmt.Errorf("format %s is allready registered with MIME %s", sf.Name, m))
+		}
+		formatsByMime[m] = &f
+	}
 }
 
-// FormatByName returns a registered format by its name. Will return nil if format is not found.
+// FormatByName returns a registered format by its name.
+// Will return nil if format is not found.
 func FormatByName(name string) *Format {
 	return formatsByName[name]
+}
+
+// FormatByExt returns a registered format by its file extension.
+// Will return nil if format is not found.
+func FormatByExt(name string) *Format {
+	return formatsByMime[name]
+}
+
+// FormatByMime returns a registered format by its MIME type.
+// Will return nil if format is not found.
+func FormatByMime(name string) *Format {
+	return formatsByMime[name]
 }

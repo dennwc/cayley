@@ -164,7 +164,7 @@ func (enc *Encoder) writeValue(s string) {
 	if enc.err != nil {
 		return
 	}
-	_, enc.err = enc.w.Write([]byte(s + " ")) // TODO: proper escaping
+	_, enc.err = enc.w.Write([]byte(s + " ")) // TODO(dennwc): proper escaping
 }
 func (enc *Encoder) WriteQuad(q quad.Quad) error {
 	enc.writeValue(q.Subject)

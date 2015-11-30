@@ -14,7 +14,41 @@ func init() {
 		Ext:    []string{".json"},
 		Mime:   []string{"application/json"},
 		Writer: func(w io.Writer) quad.WriteCloser { return NewWriter(w) },
+		Reader: func(r io.Reader) quad.ReadCloser { return NewReader(r) },
 	})
+}
+
+func NewReader(r io.Reader) *Reader {
+	var quads []quad.Quad
+	err := json.NewDecoder(r).Decode(&quads)
+	return &Reader{ // TODO(dennwc): stream-friendly reader
+		quads: quads,
+		err:   err,
+	}
+}
+
+type Reader struct {
+	quads []quad.Quad
+	n     int
+	err   error
+}
+
+func (r *Reader) ReadQuad() (quad.Quad, error) {
+	if r.err != nil {
+		return quad.Quad{}, r.err
+	}
+	if r.n >= len(r.quads) {
+		return quad.Quad{}, io.EOF
+	}
+	q := r.quads[r.n]
+	r.n++
+	if !q.IsValid() {
+		return quad.Quad{}, fmt.Errorf("invalid quad at index %d. %s", r.n-1, q)
+	}
+	return q, nil
+}
+func (r *Reader) Close() error {
+	return nil
 }
 
 func NewWriter(w io.Writer) *Writer {
@@ -32,12 +66,12 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 		return fmt.Errorf("closed")
 	}
 	if !w.written {
-		if _, err := w.w.Write([]byte("[")); err != nil {
+		if _, err := w.w.Write([]byte("[\n\t")); err != nil {
 			return err
 		}
 		w.written = true
 	} else {
-		if _, err := w.w.Write([]byte(",")); err != nil {
+		if _, err := w.w.Write([]byte(",\n\t")); err != nil {
 			return err
 		}
 	}
@@ -57,6 +91,6 @@ func (w *Writer) Close() error {
 		_, err := w.w.Write([]byte("null\n"))
 		return err
 	}
-	_, err := w.w.Write([]byte("]\n"))
+	_, err := w.w.Write([]byte("\n]\n"))
 	return err
 }

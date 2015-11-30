@@ -12,17 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package http
+package jsonarr
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/cayley/quad"
 )
 
-var parseTests = []struct {
+var readTests = []struct {
 	message string
 	input   string
 	expect  []quad.Quad
@@ -60,13 +62,62 @@ var parseTests = []struct {
 	},
 }
 
-func TestParseJSON(t *testing.T) {
-	for _, test := range parseTests {
-		got, err := ParseJSONToQuadList([]byte(test.input))
+func TestReadJSON(t *testing.T) {
+	for _, test := range readTests {
+		qr := NewReader(strings.NewReader(test.input))
+		got, err := quad.ReadAll(qr)
+		qr.Close()
 		if fmt.Sprint(err) != fmt.Sprint(test.err) {
 			t.Errorf("Failed to %v with unexpected error, got:%v expected %v", test.message, err, test.err)
 		}
 		if !reflect.DeepEqual(got, test.expect) {
+			t.Errorf("Failed to %v, got:%v expect:%v", test.message, got, test.expect)
+		}
+	}
+}
+
+var writeTests = []struct {
+	message string
+	input   []quad.Quad
+	expect  string
+	err     error
+}{
+	{
+		message: "write empty JSON",
+		input:   []quad.Quad{},
+		expect:  "null\n",
+		err:     nil,
+	},
+	{
+		message: "write JSON",
+		input: []quad.Quad{
+			{"foo", "bar", "baz", ""},
+			{"foo", "bar", "baz", "graph"},
+		},
+		expect: `[
+	{"subject":"foo","predicate":"bar","object":"baz"},
+	{"subject":"foo","predicate":"bar","object":"baz","label":"graph"}
+]
+`,
+		err: nil,
+	},
+}
+
+func TestWriteJSON(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	for _, test := range writeTests {
+		buf.Reset()
+		qw := NewWriter(buf)
+		_, err := quad.Copy(qw, quad.NewReader(test.input))
+		if err != nil {
+			t.Errorf("Failed to %v: %v", test.message, err)
+			continue
+		}
+		qw.Close()
+		if fmt.Sprint(err) != fmt.Sprint(test.err) {
+			t.Errorf("Failed to %v with unexpected error, got:%v expected %v", test.message, err, test.err)
+		}
+		if got := buf.String(); got != test.expect {
 			t.Errorf("Failed to %v, got:%v expect:%v", test.message, got, test.expect)
 		}
 	}

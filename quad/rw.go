@@ -1,6 +1,8 @@
 package quad
 
-import "io"
+import (
+	"io"
+)
 
 // Unmarshaler is an interface for quad deserializers.
 //
@@ -102,6 +104,10 @@ func (r batchReader) ReadQuads(quads []Quad) (n int, err error) {
 	return
 }
 
+// CopyBatch will copy all quads from src to dst in a batches of batchSize.
+// It returns copied quads count and an error, if it failed.
+//
+// If batchSize <= 0 default batch size will be used.
 func CopyBatch(dst BatchWriter, src Reader, batchSize int) (cnt int, err error) {
 	if batchSize <= 0 {
 		batchSize = 100 // TODO: review
@@ -125,4 +131,26 @@ func CopyBatch(dst BatchWriter, src Reader, batchSize int) (cnt int, err error) 
 		}
 	}
 	return
+}
+
+// ReadAll reads all quads from r until EOF.
+// It returns a slice with all quads that were read and an error, if any.
+func ReadAll(r Reader) (arr []Quad, err error) {
+	switch rt := r.(type) {
+	case *sliceReader:
+		arr = make([]Quad, len(rt.s)-rt.n)
+		copy(arr, rt.s[rt.n:])
+		rt.n = len(rt.s)
+		return
+	}
+	var q Quad
+	for {
+		q, err = r.ReadQuad()
+		if err == io.EOF {
+			return arr, nil
+		} else if err != nil {
+			return nil, err
+		}
+		arr = append(arr, q)
+	}
 }
