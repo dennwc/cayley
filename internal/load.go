@@ -13,6 +13,7 @@ import (
 	"github.com/google/cayley/internal/db"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
+	_ "github.com/google/cayley/quad/jsonarr"
 	"github.com/google/cayley/quad/nquads"
 )
 
@@ -64,15 +65,20 @@ func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string
 		return err
 	}
 
-	var dec quad.Reader
+	var dec quad.ReadCloser
 	switch typ {
-	case "cquad":
+	case "cquad", "cquads":
 		dec = cquads.NewDecoder(r)
-	case "nquad":
+	case "nquad", "nquads":
 		dec = nquads.NewDecoder(r)
 	default:
-		return fmt.Errorf("unknown quad format %q", typ)
+		format := quad.FormatByName(typ)
+		if format == nil || format.Reader == nil {
+			return fmt.Errorf("unknown quad format %q", typ)
+		}
+		dec = format.Reader(r)
 	}
+	defer dec.Close()
 
 	if loadFn != nil {
 		return loadFn(qw, cfg, dec)
