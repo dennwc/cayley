@@ -68,6 +68,10 @@
 			"ImportPath": "gopkg.in/mgo.v2",
 			"Comment": "r2015.01.24",
 			"Rev": "c6a7dce14133ccac2dcac3793f1d6e2ef048503a"
+		},
+		{
+			"ImportPath": "github.com/linkeddata/gojsonld",
+			"Rev": "a223ef39bb925d36d4c410d3e35b0e34e370cc31"
 		}
 	]
 }
