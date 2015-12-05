@@ -3,9 +3,9 @@ package jsonld
 import (
 	"encoding/json"
 	"github.com/google/cayley/quad"
+	"github.com/google/cayley/quad/turtle"
 	"github.com/linkeddata/gojsonld"
 	"io"
-	"strings"
 )
 
 func init() {
@@ -118,41 +118,31 @@ func (w *Writer) Close() error {
 	return json.NewEncoder(w.w).Encode(data)
 }
 func parseTerm(s string) gojsonld.Term {
-	if len(s) <= 2 {
-		return nil
+	t := turtle.ParseTerm(s)
+	switch v := t.(type) {
+	case turtle.IRI:
+		return gojsonld.NewResource(string(v))
+	case turtle.BlankNode:
+		return gojsonld.NewBlankNode(string(v))
+	case turtle.Literal:
+		if v.Language != "" {
+			return gojsonld.NewLiteralWithLanguageAndDatatype(
+				v.Value,
+				v.Language,
+				gojsonld.NewResource(gojsonld.XSD_STRING),
+			)
+		} else if v.DataType != "" {
+			return gojsonld.NewLiteralWithDatatype(
+				v.Value,
+				gojsonld.NewResource(string(v.DataType)),
+			)
+		} else {
+			return gojsonld.NewLiteralWithDatatype(
+				v.Value,
+				gojsonld.NewResource(gojsonld.XSD_STRING),
+			)
+		}
+	default:
+		return gojsonld.NewLiteralWithDatatype(s, gojsonld.NewResource(gojsonld.XSD_STRING))
 	}
-	// TODO(dennwc): parse for real
-	if s[0] == '<' && s[len(s)-1] == '>' {
-		return gojsonld.NewResource(s[1 : len(s)-1])
-	} else if s[0] == '"' && s[len(s)-1] == '"' {
-		return gojsonld.NewLiteralWithDatatype(
-			unescape(s[1:len(s)-1]),
-			gojsonld.NewResource(gojsonld.XSD_STRING),
-		)
-	} else if s[0] == '"' && s[len(s)-1] == '>' && strings.Index(s, `"^^<`) > 0 {
-		i := strings.Index(s, `"^^<`)
-		return gojsonld.NewLiteralWithDatatype(
-			unescape(s[1:i]),
-			gojsonld.NewResource(s[i+4:len(s)-1]),
-		)
-	} else if s[0] == '"' && strings.Index(s, `"@`) > 0 {
-		i := strings.Index(s, `"@`)
-		return gojsonld.NewLiteralWithLanguageAndDatatype(
-			unescape(s[1:i]),
-			s[i+2:],
-			gojsonld.NewResource(gojsonld.XSD_STRING),
-		)
-	} else if strings.Index(s, "_:") == 0 {
-		return gojsonld.NewBlankNode(s[2:])
-	}
-	return gojsonld.NewLiteralWithDatatype(s, gojsonld.NewResource(gojsonld.XSD_STRING))
-}
-
-func unescape(s string) string {
-	s = strings.Replace(s, "\\\\", "\\", -1)
-	s = strings.Replace(s, "\\\"", "\"", -1)
-	s = strings.Replace(s, "\\n", "\n", -1)
-	s = strings.Replace(s, "\\r", "\r", -1)
-	s = strings.Replace(s, "\\t", "\t", -1)
-	return s
 }

@@ -19,16 +19,19 @@ var testReadCases = []struct {
   "@context": {
     "ex": "http://example.org/",
     "term1": {"@id": "ex:term1", "@type": "ex:datatype"},
-    "term2": {"@id": "ex:term2", "@type": "@id"}
+    "term2": {"@id": "ex:term2", "@type": "@id"},
+    "term3": {"@id": "ex:term3", "@language": "en"}
   },
   "@id": "ex:id1",
   "@type": ["ex:Type1", "ex:Type2"],
   "term1": "v1",
-  "term2": "ex:id2"
+  "term2": "ex:id2",
+  "term3": "v3"
 }`,
 		[]quad.Quad{
 			{`<http://example.org/id1>`, `<http://example.org/term1>`, `"v1"^^<http://example.org/datatype>`, ``},
 			{`<http://example.org/id1>`, `<http://example.org/term2>`, `<http://example.org/id2>`, ``},
+			{`<http://example.org/id1>`, `<http://example.org/term3>`, `"v3"@en`, ``},
 			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type1>`, ``},
 			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type2>`, ``},
 		},
@@ -66,6 +69,7 @@ var testWriteCases = []struct {
 		[]quad.Quad{
 			{`<http://example.org/id1>`, `<http://example.org/term1>`, `"v1"^^<http://example.org/datatype>`, ``},
 			{`<http://example.org/id1>`, `<http://example.org/term2>`, `<http://example.org/id2>`, ``},
+			{`<http://example.org/id1>`, `<http://example.org/term3>`, `"v3"@en`, ``},
 			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type1>`, ``},
 			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type2>`, ``},
 		},
@@ -87,6 +91,10 @@ var testWriteCases = []struct {
   },
   "ex:term2": {
     "@id": "ex:id2"
+  },
+  "ex:term3": {
+    "@language": "en",
+    "@value": "v3"
   }
 }
 `,
