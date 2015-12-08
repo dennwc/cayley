@@ -1,4 +1,5 @@
-package jsonarr
+// Package json provides an encoder/decoder for JSON quad arrays
+package json
 
 import (
 	"encoding/json"
@@ -47,6 +48,7 @@ func (r *Reader) ReadQuad() (quad.Quad, error) {
 	}
 	return q, nil
 }
+
 func (r *Reader) Close() error {
 	return nil
 }
@@ -82,6 +84,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 	_, err = w.w.Write(data)
 	return err
 }
+
 func (w *Writer) Close() error {
 	if w.closed {
 		return nil

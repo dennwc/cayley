@@ -13,8 +13,10 @@ import (
 	"github.com/google/cayley/internal/db"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
-	_ "github.com/google/cayley/quad/jsonarr"
 	"github.com/google/cayley/quad/nquads"
+
+	// Register other supported decoding formats
+	_ "github.com/google/cayley/quad/json"
 )
 
 // Load loads a graph from the given path and write it to qw.  See

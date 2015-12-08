@@ -1,3 +1,4 @@
+// Package graphml provides an encoder for GraphML format
 package graphml
 
 import (
@@ -53,6 +54,7 @@ func (w *Writer) writeNode(s string) int {
 	}
 	return i
 }
+
 func (w *Writer) WriteQuad(q quad.Quad) error {
 	if w.err != nil {
 		return w.err
@@ -79,6 +81,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 	_, w.err = w.w.Write([]byte("</data></edge>\n"))
 	return w.err
 }
+
 func (w *Writer) Close() error {
 	if w.err != nil {
 		return w.err

@@ -1,3 +1,4 @@
+// Package gml provides an encoder for Graph Modeling Format
 package gml
 
 import (
@@ -58,6 +59,7 @@ var escaper = strings.NewReplacer( // TODO: ISO 8859-1?
 func escape(s string) string {
 	return `"` + escaper.Replace(s) + `"`
 }
+
 func (w *Writer) WriteQuad(q quad.Quad) error {
 	if w.err != nil {
 		return w.err
@@ -78,6 +80,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 		s, o, escape(q.Predicate))
 	return w.err
 }
+
 func (w *Writer) Close() error {
 	if w.err != nil {
 		return w.err

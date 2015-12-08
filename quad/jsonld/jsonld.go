@@ -1,3 +1,4 @@
+// Package jsonld provides an encoder/decoder for JSON-LD quad format
 package jsonld
 
 import (
@@ -72,6 +73,7 @@ next:
 		Label:     graph,
 	}, nil
 }
+
 func (r *Reader) Close() error {
 	r.graphs = nil
 	return r.err
@@ -90,6 +92,7 @@ type Writer struct {
 func (w *Writer) SetLdContext(ctx interface{}) {
 	w.ctx = ctx
 }
+
 func (w *Writer) WriteQuad(q quad.Quad) error {
 	graph := q.Label
 	if graph == "" {
@@ -104,6 +107,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 	w.ds.Graphs[graph] = g
 	return nil
 }
+
 func (w *Writer) Close() error {
 	opts := gojsonld.NewOptions("")
 	var data interface{}
@@ -117,6 +121,7 @@ func (w *Writer) Close() error {
 	}
 	return json.NewEncoder(w.w).Encode(data)
 }
+
 func parseTerm(s string) gojsonld.Term {
 	t := turtle.ParseTerm(s)
 	switch v := t.(type) {

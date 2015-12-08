@@ -9,9 +9,11 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
+
+	// Register all supported formats for encoding
 	_ "github.com/google/cayley/quad/gml"
 	_ "github.com/google/cayley/quad/graphml"
-	_ "github.com/google/cayley/quad/jsonarr"
+	_ "github.com/google/cayley/quad/json"
 	_ "github.com/google/cayley/quad/nquads"
 )
 

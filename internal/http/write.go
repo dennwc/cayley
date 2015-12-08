@@ -25,7 +25,7 @@ import (
 	"github.com/google/cayley/internal"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
-	"github.com/google/cayley/quad/jsonarr"
+	"github.com/google/cayley/quad/json"
 )
 
 func quadReaderFromRequest(r *http.Request) (qr quad.ReadCloser) {
@@ -33,7 +33,7 @@ func quadReaderFromRequest(r *http.Request) (qr quad.ReadCloser) {
 	if format != nil && format.Reader != nil {
 		qr = format.Reader(r.Body)
 	} else {
-		qr = jsonarr.NewReader(r.Body)
+		qr = json.NewReader(r.Body)
 	}
 	return
 }
