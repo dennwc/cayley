@@ -14,6 +14,7 @@ import (
 	_ "github.com/google/cayley/quad/gml"
 	_ "github.com/google/cayley/quad/graphml"
 	_ "github.com/google/cayley/quad/json"
+	_ "github.com/google/cayley/quad/jsonld"
 	_ "github.com/google/cayley/quad/nquads"
 )
 

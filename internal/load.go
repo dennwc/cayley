@@ -17,6 +17,7 @@ import (
 
 	// Register other supported decoding formats
 	_ "github.com/google/cayley/quad/json"
+	_ "github.com/google/cayley/quad/jsonld"
 )
 
 // Load loads a graph from the given path and write it to qw.  See
