@@ -19,11 +19,17 @@ func init() {
 	})
 }
 
+// NewReader returns quad reader for JSON-LD stream.
 func NewReader(r io.Reader) *Reader {
 	var o interface{}
 	if err := json.NewDecoder(r).Decode(&o); err != nil {
 		return &Reader{err: err}
 	}
+	return NewReaderFromMap(o)
+}
+
+// NewReaderFromMap returns quad reader for JSON-LD map object.
+func NewReaderFromMap(o interface{}) *Reader {
 	data, err := gojsonld.ToRDF(o, gojsonld.NewOptions(""))
 	if err != nil {
 		return &Reader{err: err}
