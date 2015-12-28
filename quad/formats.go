@@ -54,7 +54,7 @@ func FormatByName(name string) *Format {
 // FormatByExt returns a registered format by its file extension.
 // Will return nil if format is not found.
 func FormatByExt(name string) *Format {
-	return formatsByMime[name]
+	return formatsByExt[name]
 }
 
 // FormatByMime returns a registered format by its MIME type.
