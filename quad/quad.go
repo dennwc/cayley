@@ -87,7 +87,7 @@ type BNode string
 
 func (s BNode) String() string { return `_:` + string(s) }
 
-func MakeQuad(subject, predicate, object, label string) (q Quad) {
+func Make(subject, predicate, object, label string) (q Quad) {
 	if subject != "" {
 		q.Subject = Raw(subject)
 	}
@@ -160,7 +160,23 @@ func (d Direction) String() string {
 }
 
 // Per-field accessor for quads.
-func (q Quad) Get(d Direction) string {
+func (q Quad) Get(d Direction) Value {
+	switch d {
+	case Subject:
+		return q.Subject
+	case Predicate:
+		return q.Predicate
+	case Label:
+		return q.Label
+	case Object:
+		return q.Object
+	default:
+		panic(d.String())
+	}
+}
+
+// Per-field accessor for quads that returns strings instead of values.
+func (q Quad) GetString(d Direction) string {
 	switch d {
 	case Subject:
 		if q.Subject == nil {
