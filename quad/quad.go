@@ -46,12 +46,69 @@ var (
 	ErrIncomplete = errors.New("incomplete N-Quad")
 )
 
+type Value interface {
+	String() string
+}
+
+type Raw string
+
+func (s Raw) String() string { return string(s) }
+
+type String string
+
+func (s String) String() string {
+	//TODO(barakmich): Proper escaping.
+	return `"` + string(s) + `"`
+}
+
+type TypedString struct {
+	Value String
+	Type  IRI
+}
+
+func (s TypedString) String() string {
+	return s.Value.String() + `^^` + s.Type.String()
+}
+
+type LangString struct {
+	Value String
+	Lang  string
+}
+
+func (s LangString) String() string {
+	return s.Value.String() + `@` + s.Lang
+}
+
+type IRI string
+
+func (s IRI) String() string { return `<` + string(s) + `>` }
+
+type BNode string
+
+func (s BNode) String() string { return `_:` + string(s) }
+
+func MakeQuad(subject, predicate, object, label string) (q Quad) {
+	if subject != "" {
+		q.Subject = Raw(subject)
+	}
+	if predicate != "" {
+		q.Predicate = Raw(predicate)
+	}
+	if object != "" {
+		q.Object = Raw(object)
+	}
+	if label != "" {
+		q.Label = Raw(label)
+	}
+	return
+}
+
 // Our quad struct, used throughout.
 type Quad struct {
-	Subject   string `json:"subject"`
-	Predicate string `json:"predicate"`
-	Object    string `json:"object"`
-	Label     string `json:"label,omitempty"`
+	Subject   Value `json:"subject"`
+	Predicate Value `json:"predicate"`
+	Object    Value `json:"object"`
+	Label     Value `json:"label,omitempty"`
 }
 
 // Direction specifies an edge's type.
@@ -106,13 +163,25 @@ func (d Direction) String() string {
 func (q Quad) Get(d Direction) string {
 	switch d {
 	case Subject:
-		return q.Subject
+		if q.Subject == nil {
+			return ""
+		}
+		return q.Subject.String()
 	case Predicate:
-		return q.Predicate
+		if q.Predicate == nil {
+			return ""
+		}
+		return q.Predicate.String()
 	case Label:
-		return q.Label
+		if q.Label == nil {
+			return ""
+		}
+		return q.Label.String()
 	case Object:
-		return q.Object
+		if q.Object == nil {
+			return ""
+		}
+		return q.Object.String()
 	default:
 		panic(d.String())
 	}
@@ -124,13 +193,13 @@ func (q Quad) String() string {
 }
 
 func (q Quad) IsValid() bool {
-	return q.Subject != "" && q.Predicate != "" && q.Object != ""
+	return q.Subject != nil && q.Predicate != nil && q.Object != nil &&
+		q.Subject.String() != "" && q.Predicate.String() != "" && q.Object.String() != ""
 }
 
 // Prints a quad in N-Quad format.
 func (q Quad) NQuad() string {
-	if q.Label == "" {
-		//TODO(barakmich): Proper escaping.
+	if q.Label == nil || q.Label.String() == "" {
 		return fmt.Sprintf("%s %s %s .", q.Subject, q.Predicate, q.Object)
 	}
 	return fmt.Sprintf("%s %s %s %s .", q.Subject, q.Predicate, q.Object, q.Label)
