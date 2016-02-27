@@ -279,3 +279,11 @@ func HashOf(v Value) []byte {
 	key = h.Sum(key)
 	return key
 }
+
+// StringOf safely call v.String, returning empty string in case of nil Value.
+func StringOf(v Value) string {
+	if v == nil {
+		return ""
+	}
+	return v.String()
+}
