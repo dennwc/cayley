@@ -16,12 +16,9 @@ package bolt
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash"
-	"sync"
 
 	"github.com/barakmich/glog"
 	"github.com/boltdb/bolt"
@@ -46,13 +43,7 @@ var (
 	errNoBucket = errors.New("bolt: bucket is missing")
 )
 
-var (
-	hashPool = sync.Pool{
-		New: func() interface{} { return sha1.New() },
-	}
-	hashSize         = sha1.Size
-	localFillPercent = 0.7
-)
+const localFillPercent = 0.7
 
 const (
 	QuadStoreType = "bolt"
@@ -187,30 +178,18 @@ func bucketFor(d [4]quad.Direction) []byte {
 	return []byte{d[0].Prefix(), d[1].Prefix(), d[2].Prefix(), d[3].Prefix()}
 }
 
-func hashOf(s quad.Value) []byte {
-	h := hashPool.Get().(hash.Hash)
-	h.Reset()
-	defer hashPool.Put(h)
-	key := make([]byte, 0, hashSize)
-	if s != nil {
-		h.Write([]byte(s.String()))
-	}
-	key = h.Sum(key)
-	return key
-}
-
 func (qs *QuadStore) createKeyFor(d [4]quad.Direction, q quad.Quad) []byte {
-	key := make([]byte, 0, (hashSize * 4))
-	key = append(key, hashOf(q.Get(d[0]))...)
-	key = append(key, hashOf(q.Get(d[1]))...)
-	key = append(key, hashOf(q.Get(d[2]))...)
-	key = append(key, hashOf(q.Get(d[3]))...)
+	key := make([]byte, 0, (quad.HashSize * 4))
+	key = append(key, quad.HashOf(q.Get(d[0]))...)
+	key = append(key, quad.HashOf(q.Get(d[1]))...)
+	key = append(key, quad.HashOf(q.Get(d[2]))...)
+	key = append(key, quad.HashOf(q.Get(d[3]))...)
 	return key
 }
 
 func (qs *QuadStore) createValueKeyFor(s quad.Value) []byte {
-	key := make([]byte, 0, hashSize)
-	key = append(key, hashOf(s)...)
+	key := make([]byte, 0, quad.HashSize)
+	key = append(key, quad.HashOf(s)...)
 	return key
 }
 
@@ -581,7 +560,7 @@ func (qs *QuadStore) QuadDirection(val graph.Value, d quad.Direction) graph.Valu
 	if offset != -1 {
 		return &Token{
 			bucket: nodeBucket,
-			key:    v.key[offset : offset+hashSize],
+			key:    v.key[offset : offset+quad.HashSize],
 		}
 	}
 	return qs.ValueOf(qs.Quad(v).Get(d))

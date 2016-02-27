@@ -16,13 +16,10 @@ package leveldb
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
-	"sync"
 
 	"github.com/barakmich/glog"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -50,13 +47,6 @@ const (
 	QuadStoreType          = "leveldb"
 	horizonKey             = "__horizon"
 	sizeKey                = "__size"
-)
-
-var (
-	hashPool = sync.Pool{
-		New: func() interface{} { return sha1.New() },
-	}
-	hashSize = sha1.Size
 )
 
 type Token []byte
@@ -163,37 +153,30 @@ func (qs *QuadStore) Horizon() graph.PrimaryKey {
 	return graph.NewSequentialKey(qs.horizon)
 }
 
-func hashOf(s string) []byte {
-	h := hashPool.Get().(hash.Hash)
-	h.Reset()
-	defer hashPool.Put(h)
-	key := make([]byte, 0, hashSize)
-	h.Write([]byte(s))
-	key = h.Sum(key)
-	return key
-}
-
 func (qs *QuadStore) createKeyFor(d [4]quad.Direction, q quad.Quad) []byte {
-	key := make([]byte, 0, 2+(hashSize*4))
+	key := make([]byte, 0, 2+(quad.HashSize*4))
 	// TODO(kortschak) Remove dependence on String() method.
 	key = append(key, []byte{d[0].Prefix(), d[1].Prefix()}...)
-	key = append(key, hashOf(q.Get(d[0]))...)
-	key = append(key, hashOf(q.Get(d[1]))...)
-	key = append(key, hashOf(q.Get(d[2]))...)
-	key = append(key, hashOf(q.Get(d[3]))...)
+	key = append(key, quad.HashOf(q.Get(d[0]))...)
+	key = append(key, quad.HashOf(q.Get(d[1]))...)
+	key = append(key, quad.HashOf(q.Get(d[2]))...)
+	key = append(key, quad.HashOf(q.Get(d[3]))...)
 	return key
 }
 
-func (qs *QuadStore) createValueKeyFor(s string) []byte {
-	key := make([]byte, 0, 1+hashSize)
+func (qs *QuadStore) createValueKeyFor(s quad.Value) []byte {
+	key := make([]byte, 0, 1+quad.HashSize)
 	key = append(key, []byte("z")...)
-	key = append(key, hashOf(s)...)
+	key = append(key, quad.HashOf(s)...)
 	return key
 }
 
 type IndexEntry struct {
-	quad.Quad
-	History []int64
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+	Label     string `json:"label,omitempty"`
+	History   []int64
 }
 
 // Short hand for direction permutations.
@@ -206,7 +189,7 @@ var (
 
 func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOpts) error {
 	batch := &leveldb.Batch{}
-	resizeMap := make(map[string]int64)
+	resizeMap := make(map[quad.Value]int64)
 	sizeChange := int64(0)
 	for _, d := range deltas {
 		if d.Action != graph.Add && d.Action != graph.Delete {
@@ -234,7 +217,7 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 		resizeMap[d.Quad.Subject] += delta
 		resizeMap[d.Quad.Predicate] += delta
 		resizeMap[d.Quad.Object] += delta
-		if d.Quad.Label != "" {
+		if d.Quad.Label != nil {
 			resizeMap[d.Quad.Label] += delta
 		}
 		sizeChange += delta
@@ -278,7 +261,12 @@ func (qs *QuadStore) buildQuadWrite(batch *leveldb.Batch, q quad.Quad, id int64,
 			return err
 		}
 	} else {
-		entry.Quad = q
+		entry.Subject = q.Subject.String()
+		entry.Predicate = q.Predicate.String()
+		entry.Object = q.Object.String()
+		if q.Label != nil {
+			entry.Label = q.Label.String()
+		}
 	}
 
 	if isAdd && len(entry.History)%2 == 1 {
@@ -286,7 +274,7 @@ func (qs *QuadStore) buildQuadWrite(batch *leveldb.Batch, q quad.Quad, id int64,
 		return graph.ErrQuadExists
 	}
 	if !isAdd && len(entry.History)%2 == 0 {
-		glog.Error("attempt to delete non-existent quad %v: %#c", entry, q)
+		glog.Errorf("attempt to delete non-existent quad %v: %#c", entry, q)
 		return graph.ErrQuadNotExist
 	}
 
@@ -300,7 +288,7 @@ func (qs *QuadStore) buildQuadWrite(batch *leveldb.Batch, q quad.Quad, id int64,
 	batch.Put(qs.createKeyFor(spo, q), bytes)
 	batch.Put(qs.createKeyFor(osp, q), bytes)
 	batch.Put(qs.createKeyFor(pos, q), bytes)
-	if q.Get(quad.Label) != "" {
+	if q.Get(quad.Label) != nil {
 		batch.Put(qs.createKeyFor(cps, q), bytes)
 	}
 	return nil
@@ -311,8 +299,8 @@ type ValueData struct {
 	Size int64
 }
 
-func (qs *QuadStore) UpdateValueKeyBy(name string, amount int64, batch *leveldb.Batch) error {
-	value := &ValueData{name, amount}
+func (qs *QuadStore) UpdateValueKeyBy(name quad.Value, amount int64, batch *leveldb.Batch) error {
+	value := &ValueData{name.String(), amount}
 	key := qs.createValueKeyFor(name)
 	b, err := qs.db.Get(key, qs.readopts)
 
@@ -395,7 +383,7 @@ func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 	return q
 }
 
-func (qs *QuadStore) ValueOf(s string) graph.Value {
+func (qs *QuadStore) ValueOf(s quad.Value) graph.Value {
 	return Token(qs.createValueKeyFor(s))
 }
 
@@ -419,12 +407,17 @@ func (qs *QuadStore) valueData(key []byte) ValueData {
 	return out
 }
 
-func (qs *QuadStore) NameOf(k graph.Value) string {
+func (qs *QuadStore) NameOf(k graph.Value) quad.Value {
 	if k == nil {
 		glog.V(2).Info("k was nil")
-		return ""
+		return nil
 	}
-	return qs.valueData(k.(Token)).Name
+	v := qs.valueData(k.(Token))
+	if v.Name == "" {
+		glog.V(2).Info("k was empty")
+		return nil
+	}
+	return quad.Raw(v.Name)
 }
 
 func (qs *QuadStore) SizeOf(k graph.Value) int64 {
@@ -508,9 +501,9 @@ func (qs *QuadStore) QuadDirection(val graph.Value, d quad.Direction) graph.Valu
 	v := val.(Token)
 	offset := PositionOf(v[0:2], d, qs)
 	if offset != -1 {
-		return Token(append([]byte("z"), v[offset:offset+hashSize]...))
+		return Token(append([]byte("z"), v[offset:offset+quad.HashSize]...))
 	}
-	return Token(qs.Quad(val).Get(d))
+	return Token(qs.Quad(val).Get(d).String())
 }
 
 func compareBytes(a, b graph.Value) bool {
