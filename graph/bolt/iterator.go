@@ -298,7 +298,7 @@ func (it *Iterator) Size() (int64, bool) {
 func (it *Iterator) Describe() graph.Description {
 	return graph.Description{
 		UID:       it.UID(),
-		Name:      it.qs.NameOf(&Token{it.bucket, it.checkID}),
+		Name:      it.qs.NameOf(&Token{it.bucket, it.checkID}).String(),
 		Type:      it.Type(),
 		Tags:      it.tags.Tags(),
 		Size:      it.size,
