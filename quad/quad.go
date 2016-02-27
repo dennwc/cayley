@@ -37,8 +37,12 @@ package quad
 // the consequences are not to be taken lightly. But do suggest cool features!
 
 import (
+	"crypto/sha1"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
+	"sync"
 )
 
 var (
@@ -103,12 +107,44 @@ func Make(subject, predicate, object, label string) (q Quad) {
 	return
 }
 
+var (
+	_ json.Marshaler   = Quad{}
+	_ json.Unmarshaler = (*Quad)(nil)
+)
+
 // Our quad struct, used throughout.
 type Quad struct {
 	Subject   Value `json:"subject"`
 	Predicate Value `json:"predicate"`
 	Object    Value `json:"object"`
 	Label     Value `json:"label,omitempty"`
+}
+
+type rawQuad struct {
+	Subject   string `json:"subject"`
+	Predicate string `json:"predicate"`
+	Object    string `json:"object"`
+	Label     string `json:"label,omitempty"`
+}
+
+func (q Quad) MarshalJSON() ([]byte, error) {
+	rq := rawQuad{
+		Subject:   q.Subject.String(),
+		Predicate: q.Predicate.String(),
+		Object:    q.Object.String(),
+	}
+	if q.Label != nil {
+		rq.Label = q.Label.String()
+	}
+	return json.Marshal(rq)
+}
+func (q *Quad) UnmarshalJSON(data []byte) error {
+	var rq rawQuad
+	if err := json.Unmarshal(data, &rq); err != nil {
+		return err
+	}
+	*q = Make(rq.Subject, rq.Predicate, rq.Object, rq.Label)
+	return nil
 }
 
 // Direction specifies an edge's type.
@@ -223,4 +259,23 @@ func (q Quad) NQuad() string {
 
 type Unmarshaler interface {
 	Unmarshal() (Quad, error)
+}
+
+const HashSize = sha1.Size
+
+var hashPool = sync.Pool{
+	New: func() interface{} { return sha1.New() },
+}
+
+// HashOf calculates a hash of value v
+func HashOf(v Value) []byte {
+	h := hashPool.Get().(hash.Hash)
+	h.Reset()
+	defer hashPool.Put(h)
+	key := make([]byte, 0, HashSize)
+	if v != nil {
+		h.Write([]byte(v.String()))
+	}
+	key = h.Sum(key)
+	return key
 }
