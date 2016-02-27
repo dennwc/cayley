@@ -320,7 +320,7 @@ func convertToPostgres(query string, values []string) string {
 	return query
 }
 
-func NewSQLLinkIterator(qs *QuadStore, d quad.Direction, val string) *SQLIterator {
+func NewSQLLinkIterator(qs *QuadStore, d quad.Direction, val quad.Value) *SQLIterator {
 	l := &SQLIterator{
 		uid: iterator.NextUID(),
 		qs:  qs,
@@ -328,7 +328,7 @@ func NewSQLLinkIterator(qs *QuadStore, d quad.Direction, val string) *SQLIterato
 			constraints: []constraint{
 				constraint{
 					dir:  d,
-					vals: []string{val},
+					vals: []quad.Value{val},
 				},
 			},
 			tableName: newTableName(),
