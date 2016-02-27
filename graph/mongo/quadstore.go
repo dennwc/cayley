@@ -15,11 +15,8 @@
 package mongo
 
 import (
-	"crypto/sha1"
 	"encoding/hex"
 	"errors"
-	"hash"
-	"sync"
 
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -42,13 +39,6 @@ func init() {
 		IsPersistent:      true,
 	})
 }
-
-var (
-	hashPool = sync.Pool{
-		New: func() interface{} { return sha1.New() },
-	}
-	hashSize = sha1.Size
-)
 
 type QuadStore struct {
 	session *mgo.Session
@@ -125,15 +115,8 @@ func (qs *QuadStore) getIDForQuad(t quad.Quad) string {
 	return id
 }
 
-func hashOf(s string) string {
-	h := hashPool.Get().(hash.Hash)
-	h.Reset()
-	defer hashPool.Put(h)
-
-	key := make([]byte, 0, hashSize)
-	h.Write([]byte(s))
-	key = h.Sum(key)
-	return hex.EncodeToString(key)
+func hashOf(s quad.Value) string {
+	return hex.EncodeToString(quad.HashOf(s))
 }
 
 type MongoNode struct {
@@ -149,7 +132,7 @@ type MongoLogEntry struct {
 	Timestamp int64
 }
 
-func (qs *QuadStore) updateNodeBy(name string, inc int) error {
+func (qs *QuadStore) updateNodeBy(name quad.Value, inc int) error {
 	node := qs.ValueOf(name)
 	doc := bson.M{
 		"_id":  node.(string),
@@ -230,7 +213,7 @@ func (qs *QuadStore) updateLog(d graph.Delta) error {
 
 func (qs *QuadStore) ApplyDeltas(in []graph.Delta, ignoreOpts graph.IgnoreOpts) error {
 	qs.session.SetSafe(nil)
-	ids := make(map[string]int)
+	ids := make(map[quad.Value]int)
 	// Pre-check the existence condition.
 	for _, d := range in {
 		if d.Action != graph.Add && d.Action != graph.Delete {
@@ -279,7 +262,7 @@ func (qs *QuadStore) ApplyDeltas(in []graph.Delta, ignoreOpts graph.IgnoreOpts) 
 		ids[d.Quad.Subject] += countdelta
 		ids[d.Quad.Object] += countdelta
 		ids[d.Quad.Predicate] += countdelta
-		if d.Quad.Label != "" {
+		if d.Quad.Label != nil {
 			ids[d.Quad.Label] += countdelta
 		}
 	}
@@ -314,14 +297,14 @@ func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
 	return NewAllIterator(qs, "quads")
 }
 
-func (qs *QuadStore) ValueOf(s string) graph.Value {
+func (qs *QuadStore) ValueOf(s quad.Value) graph.Value {
 	return hashOf(s)
 }
 
-func (qs *QuadStore) NameOf(v graph.Value) string {
+func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 	val, ok := qs.ids.Get(v.(string))
 	if ok {
-		return val.(string)
+		return quad.Raw(val.(string))
 	}
 	var node MongoNode
 	err := qs.db.C("nodes").FindId(v.(string)).One(&node)
@@ -330,7 +313,7 @@ func (qs *QuadStore) NameOf(v graph.Value) string {
 	} else if node.ID != "" && node.Name != "" {
 		qs.ids.Put(v.(string), node.Name)
 	}
-	return node.Name
+	return quad.Raw(node.Name)
 }
 
 func (qs *QuadStore) Size() int64 {
@@ -370,13 +353,13 @@ func (qs *QuadStore) QuadDirection(in graph.Value, d quad.Direction) graph.Value
 	case quad.Subject:
 		offset = 0
 	case quad.Predicate:
-		offset = (hashSize * 2)
+		offset = (quad.HashSize * 2)
 	case quad.Object:
-		offset = (hashSize * 2) * 2
+		offset = (quad.HashSize * 2) * 2
 	case quad.Label:
-		offset = (hashSize * 2) * 3
+		offset = (quad.HashSize * 2) * 3
 	}
-	val := in.(string)[offset : hashSize*2+offset]
+	val := in.(string)[offset : quad.HashSize*2+offset]
 	return val
 }
 
