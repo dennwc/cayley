@@ -498,11 +498,11 @@ func deletePrepare(t testing.TB) {
 	deleteAndRecreate.Do(func() {
 		prepare(t)
 		if !graph.IsPersistent(cfg.DatabaseType) {
-			err = removeAll(handle.QuadWriter, cfg, "", "cquad")
+			err = removeAll(handle.QuadWriter, cfg, "", "nquad")
 			if err != nil {
 				t.Fatalf("Failed to remove %q: %v", cfg.DatabasePath, err)
 			}
-			err = internal.Load(handle.QuadWriter, cfg, "", "cquad")
+			err = internal.Load(handle.QuadWriter, cfg, "", "nquad")
 			if err != nil {
 				t.Fatalf("Failed to load %q: %v", cfg.DatabasePath, err)
 			}
