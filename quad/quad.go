@@ -54,10 +54,12 @@ type Value interface {
 	String() string
 }
 
+// Raw is a Turtle/NQuads-encoded value.
 type Raw string
 
 func (s Raw) String() string { return string(s) }
 
+// String is an RDF string value (ex: "name").
 type String string
 
 func (s String) String() string {
@@ -65,6 +67,7 @@ func (s String) String() string {
 	return `"` + string(s) + `"`
 }
 
+// TypedString is an RDF value with type (ex: "name"^^<type>).
 type TypedString struct {
 	Value String
 	Type  IRI
@@ -74,6 +77,7 @@ func (s TypedString) String() string {
 	return s.Value.String() + `^^` + s.Type.String()
 }
 
+// LangString is an RDF string with language (ex: "name"@lang).
 type LangString struct {
 	Value String
 	Lang  string
@@ -83,14 +87,17 @@ func (s LangString) String() string {
 	return s.Value.String() + `@` + s.Lang
 }
 
+// IRI is an RDF Internationalized Resource Identifier (ex: <name>).
 type IRI string
 
 func (s IRI) String() string { return `<` + string(s) + `>` }
 
+// BNode is an RDF Blank Node (ex: _:name).
 type BNode string
 
 func (s BNode) String() string { return `_:` + string(s) }
 
+// Make creates a quad with provided raw values.
 func Make(subject, predicate, object, label string) (q Quad) {
 	if subject != "" {
 		q.Subject = Raw(subject)
