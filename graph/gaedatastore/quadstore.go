@@ -17,13 +17,10 @@
 package gaedatastore
 
 import (
-	"crypto/sha1"
 	"encoding/hex"
 	"errors"
-	"hash"
 	"math"
 	"net/http"
-	"sync"
 
 	"github.com/barakmich/glog"
 
@@ -113,15 +110,19 @@ func newQuadStoreForRequest(qs graph.QuadStore, options graph.Options) (graph.Qu
 }
 
 func (qs *QuadStore) createKeyForQuad(q quad.Quad) *datastore.Key {
-	id := quad.HashOf(q.Subject)
-	id += quad.HashOf(q.Predicate)
-	id += quad.HashOf(q.Object)
-	id += quad.HashOf(q.Label)
+	id := hashOf(q.Subject)
+	id += hashOf(q.Predicate)
+	id += hashOf(q.Object)
+	id += hashOf(q.Label)
 	return qs.createKeyFromToken(&Token{quadKind, id})
 }
 
+func hashOf(s quad.Value) string {
+	return hex.EncodeToString(quad.HashOf(s))
+}
+
 func (qs *QuadStore) createKeyForNode(n quad.Value) *datastore.Key {
-	id := quad.HashOf(n)
+	id := hashOf(n)
 	return qs.createKeyFromToken(&Token{nodeKind, id})
 }
 
@@ -248,7 +249,7 @@ func (qs *QuadStore) updateNodes(in []graph.Delta) (int64, error) {
 		nodeDeltas[d.Quad.Subject] += countDelta
 		nodeDeltas[d.Quad.Object] += countDelta
 		nodeDeltas[d.Quad.Predicate] += countDelta
-		if d.Quad.Label != "" {
+		if d.Quad.Label != nil {
 			nodeDeltas[d.Quad.Label] += countDelta
 		}
 		nodesAdded += countDelta
@@ -311,10 +312,10 @@ func (qs *QuadStore) updateQuads(in []graph.Delta) (int64, error) {
 			for k, _ := range foundQuads {
 				x := i + k
 				foundQuads[k].Hash = keys[x].StringID()
-				foundQuads[k].Subject = in[x].Quad.Subject
-				foundQuads[k].Predicate = in[x].Quad.Predicate
-				foundQuads[k].Object = in[x].Quad.Object
-				foundQuads[k].Label = in[x].Quad.Label
+				foundQuads[k].Subject = in[x].Quad.Subject.String()
+				foundQuads[k].Predicate = in[x].Quad.Predicate.String()
+				foundQuads[k].Object = in[x].Quad.Object.String()
+				foundQuads[k].Label = quad.StringOf(in[x].Quad.Label)
 
 				// If the quad exists the Added[] will be non-empty
 				if in[x].Action == graph.Add {
@@ -403,21 +404,21 @@ func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
 }
 
 func (qs *QuadStore) ValueOf(s quad.Value) graph.Value {
-	id := quad.HashOf(s)
+	id := hashOf(s)
 	return &Token{Kind: nodeKind, Hash: id}
 }
 
 func (qs *QuadStore) NameOf(val graph.Value) quad.Value {
 	if qs.context == nil {
 		glog.Error("Error in NameOf, context is nil, graph not correctly initialised")
-		return ""
+		return nil
 	}
 	var key *datastore.Key
 	if t, ok := val.(*Token); ok && t.Kind == nodeKind {
 		key = qs.createKeyFromToken(t)
 	} else {
 		glog.Error("Token not valid")
-		return ""
+		return nil
 	}
 
 	// TODO (panamafrancis) implement a cache
@@ -426,7 +427,7 @@ func (qs *QuadStore) NameOf(val graph.Value) quad.Value {
 	err := datastore.Get(qs.context, key, node)
 	if err != nil {
 		glog.Errorf("Error: %v", err)
-		return ""
+		return nil
 	}
 	return quad.Raw(node.Name)
 }

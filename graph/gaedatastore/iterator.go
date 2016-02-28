@@ -65,7 +65,7 @@ func NewIterator(qs *QuadStore, k string, d quad.Direction, val graph.Value) *It
 		glog.Error("Cannot create iterator without a valid context")
 		return &Iterator{done: true}
 	}
-	name := qs.NameOf(t)
+	name := quad.StringOf(qs.NameOf(t))
 
 	// The number of references to this node is held in the nodes entity
 	key := qs.createKeyFromToken(t)
