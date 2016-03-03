@@ -215,14 +215,7 @@ func deltaToProto(delta graph.Delta) proto.LogDelta {
 	newd.ID = uint64(delta.ID.Int())
 	newd.Action = int32(delta.Action)
 	newd.Timestamp = delta.Timestamp.UnixNano()
-	newd.Quad = &proto.Quad{
-		Subject:   delta.Quad.Subject.String(),
-		Predicate: delta.Quad.Predicate.String(),
-		Object:    delta.Quad.Object.String(),
-	}
-	if l := delta.Quad.Label; l != nil {
-		newd.Quad.Label = l.String()
-	}
+	newd.Quad = proto.MakeQuad(delta.Quad)
 	return newd
 }
 
@@ -338,7 +331,7 @@ func (qs *QuadStore) buildQuadWrite(tx *bolt.Tx, q quad.Quad, id int64, isAdd bo
 
 func (qs *QuadStore) UpdateValueKeyBy(name quad.Value, amount int64, tx *bolt.Tx) error {
 	value := proto.NodeData{
-		Name:  name.String(),
+		Value: proto.MakeValue(name),
 		Size_: amount,
 	}
 	b := tx.Bucket(nodeBucket)
@@ -440,16 +433,7 @@ func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 		glog.Error("Error getting quad: ", err)
 		return quad.Quad{}
 	}
-	q := quad.Quad{
-		quad.Raw(d.Quad.Subject),
-		quad.Raw(d.Quad.Predicate),
-		quad.Raw(d.Quad.Object),
-		nil,
-	}
-	if d.Quad.Label != "" {
-		q.Label = quad.Raw(d.Quad.Label)
-	}
-	return q
+	return d.Quad.ToNative()
 }
 
 func (qs *QuadStore) ValueOf(s quad.Value) graph.Value {
@@ -484,7 +468,8 @@ func (qs *QuadStore) NameOf(k graph.Value) quad.Value {
 		glog.V(2).Info("k was nil")
 		return nil
 	}
-	return quad.Raw(qs.valueData(k.(*Token)).Name)
+	v := qs.valueData(k.(*Token))
+	return v.GetNativeValue()
 }
 
 func (qs *QuadStore) SizeOf(k graph.Value) int64 {
