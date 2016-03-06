@@ -281,6 +281,7 @@ func HashOf(v Value) []byte {
 	defer hashPool.Put(h)
 	key := make([]byte, 0, HashSize)
 	if v != nil {
+		// TODO(kortschak,dennwc) Remove dependence on String() method.
 		h.Write([]byte(v.String()))
 	}
 	key = h.Sum(key)
