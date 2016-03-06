@@ -9,6 +9,7 @@ go:
 
 install:
   # Install our tracked dependencies
+  - go get -t ./...
   - go get github.com/tools/godep
   - godep restore
 
