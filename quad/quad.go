@@ -248,7 +248,7 @@ func (q Quad) GetString(d Direction) string {
 
 // Pretty-prints a quad.
 func (q Quad) String() string {
-	return fmt.Sprintf("%s -- %s -> %s", q.Subject, q.Predicate, q.Object)
+	return fmt.Sprintf("%v -- %v -> %v", q.Subject, q.Predicate, q.Object)
 }
 
 func (q Quad) IsValid() bool {
@@ -294,3 +294,30 @@ func StringOf(v Value) string {
 	}
 	return v.String()
 }
+
+type ByQuadString []Quad
+
+func (o ByQuadString) Len() int { return len(o) }
+func (o ByQuadString) Less(i, j int) bool {
+	switch { // TODO: optimize
+	case StringOf(o[i].Subject) < StringOf(o[j].Subject),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) < StringOf(o[j].Predicate),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) == StringOf(o[j].Predicate) &&
+			StringOf(o[i].Object) < StringOf(o[j].Object),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) == StringOf(o[j].Predicate) &&
+			StringOf(o[i].Object) == StringOf(o[j].Object) &&
+			StringOf(o[i].Label) < StringOf(o[j].Label):
+
+		return true
+
+	default:
+		return false
+	}
+}
+func (o ByQuadString) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
