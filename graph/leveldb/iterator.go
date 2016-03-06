@@ -16,7 +16,6 @@ package leveldb
 
 import (
 	"bytes"
-	"encoding/json"
 
 	"github.com/barakmich/glog"
 	ldbit "github.com/syndtr/goleveldb/leveldb/iterator"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"github.com/google/cayley/graph/proto"
 	"github.com/google/cayley/quad"
 )
 
@@ -118,8 +118,8 @@ func (it *Iterator) Close() error {
 }
 
 func (it *Iterator) isLiveValue(val []byte) bool {
-	var entry IndexEntry
-	json.Unmarshal(val, &entry)
+	var entry proto.HistoryEntry
+	entry.Unmarshal(val)
 	return len(entry.History)%2 != 0
 }
 
