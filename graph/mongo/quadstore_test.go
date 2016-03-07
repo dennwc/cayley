@@ -35,5 +35,6 @@ func TestMongoAll(t *testing.T) {
 	graphtest.TestAll(t, makeMongo, &graphtest.Config{
 		SkipDeletedFromIterator:  true,
 		SkipSizeCheckAfterDelete: true,
+		UnTyped:                  true,
 	})
 }
