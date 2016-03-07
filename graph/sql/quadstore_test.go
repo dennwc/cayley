@@ -43,5 +43,6 @@ func makePostgres(t testing.TB) (graph.QuadStore, func()) {
 func TestPostgresAll(t *testing.T) {
 	graphtest.TestAll(t, makePostgres, &graphtest.Config{
 		SkipSizeCheckAfterDelete: true,
+		UnTyped:                  true,
 	})
 }

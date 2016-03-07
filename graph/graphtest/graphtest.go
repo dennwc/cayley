@@ -8,6 +8,7 @@ import (
 	"github.com/google/cayley/graph/iterator"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/writer"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,6 +17,7 @@ type DatabaseFunc func(t testing.TB) (graph.QuadStore, func())
 type Config struct {
 	SkipDeletedFromIterator  bool
 	SkipSizeCheckAfterDelete bool
+	UnTyped                  bool
 }
 
 func TestAll(t testing.TB, gen DatabaseFunc, conf *Config) {
@@ -25,6 +27,9 @@ func TestAll(t testing.TB, gen DatabaseFunc, conf *Config) {
 	TestSetIterator(t, gen)
 	if conf == nil || !conf.SkipDeletedFromIterator {
 		TestDeletedFromIterator(t, gen)
+	}
+	if conf == nil || !conf.UnTyped {
+		TestLoadTypedQuads(t, gen)
 	}
 }
 
@@ -319,4 +324,30 @@ func TestDeletedFromIterator(t testing.TB, gen DatabaseFunc) {
 	w.RemoveQuad(quad.Make("E", "follows", "F", ""))
 
 	ExpectIteratedQuads(t, qs, it, nil)
+}
+
+func TestLoadTypedQuads(t testing.TB, gen DatabaseFunc) {
+	qs, closer := gen(t)
+	defer closer()
+
+	w := MakeWriter(t, qs)
+
+	values := []quad.Value{
+		quad.BNode("A"), quad.IRI("name"), quad.String("B"), quad.IRI("graph"),
+		quad.IRI("B"), quad.Raw("<type>"),
+		quad.TypedString{Value: "10", Type: "int"},
+		quad.LangString{Value: "value", Lang: "en"},
+	}
+
+	err := w.AddQuadSet([]quad.Quad{
+		{values[0], values[1], values[2], values[3]},
+		{values[4], values[5], values[6], nil},
+		{values[4], values[5], values[7], nil},
+	})
+	require.Nil(t, err)
+	for _, pq := range values {
+		got := qs.NameOf(qs.ValueOf(pq))
+		assert.Equal(t, pq, got, "Failed to roundtrip %q (%T)", pq, pq)
+	}
+	require.Equal(t, int64(3), qs.Size(), "Unexpected quadstore size")
 }
