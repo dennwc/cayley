@@ -3,7 +3,6 @@ package sql
 import (
 	"database/sql"
 	"encoding/hex"
-	"errors"
 	"fmt"
 
 	"github.com/lib/pq"
@@ -142,7 +141,19 @@ func hashOf(s quad.Value) string {
 	return hex.EncodeToString(quad.HashOf(s))
 }
 
-func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta) error {
+func convInsertError(err error) error {
+	if err == nil {
+		return err
+	}
+	if pe, ok := err.(*pq.Error); ok {
+		if pe.Code == "23505" {
+			return graph.ErrQuadExists
+		}
+	}
+	return err
+}
+
+func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpts) error {
 	stmt, err := tx.Prepare(pq.CopyIn("quads", "subject", "predicate", "object", "label", "id", "ts", "subject_hash", "predicate_hash", "object_hash", "label_hash"))
 	if err != nil {
 		glog.Errorf("couldn't prepare COPY statement: %v", err)
@@ -162,6 +173,7 @@ func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta) error {
 			hashOf(d.Quad.Label),
 		)
 		if err != nil {
+			err = convInsertError(err)
 			glog.Errorf("couldn't execute COPY statement: %v", err)
 			return err
 		}
@@ -171,6 +183,7 @@ func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta) error {
 	//	return err
 	//}
 	if err = stmt.Close(); err != nil {
+		err = convInsertError(err)
 		glog.Errorf("couldn't close COPY statement: %v", err)
 		return err
 	}
@@ -184,14 +197,18 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 			allAdds = false
 		}
 	}
-	if allAdds {
-		return qs.copyFrom(tx, in)
+	if allAdds && !opts.IgnoreDup {
+		return qs.copyFrom(tx, in, opts)
 	}
 
 	for _, d := range in {
 		switch d.Action {
 		case graph.Add:
-			_, err := tx.Exec(`INSERT INTO quads(subject, predicate, object, label, id, ts, subject_hash, predicate_hash, object_hash, label_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
+			end := ";"
+			if opts.IgnoreDup {
+				end = " ON CONFLICT DO NOTHING;"
+			}
+			_, err := tx.Exec(`INSERT INTO quads(subject, predicate, object, label, id, ts, subject_hash, predicate_hash, object_hash, label_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`+end,
 				quad.StringOf(d.Quad.Subject),
 				quad.StringOf(d.Quad.Predicate),
 				quad.StringOf(d.Quad.Object),
@@ -203,6 +220,7 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				hashOf(d.Quad.Object),
 				hashOf(d.Quad.Label),
 			)
+			err = convInsertError(err)
 			if err != nil {
 				glog.Errorf("couldn't exec INSERT statement: %v", err)
 				return err
@@ -220,17 +238,17 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				return err
 			}
 			if affected != 1 && !opts.IgnoreMissing {
-				return errors.New("deleting non-existent triple; rolling back")
+				return graph.ErrQuadNotExist
 			}
 		default:
 			panic("unknown action")
 		}
 	}
+	qs.size = -1 // TODO(barakmich): Sync size with writes.
 	return nil
 }
 
 func (qs *QuadStore) ApplyDeltas(in []graph.Delta, opts graph.IgnoreOpts) error {
-	// TODO(barakmich): Support more ignoreOpts? "ON CONFLICT IGNORE"
 	tx, err := qs.db.Begin()
 	if err != nil {
 		glog.Errorf("couldn't begin write transaction: %v", err)
@@ -278,7 +296,6 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 }
 
 func (qs *QuadStore) Size() int64 {
-	// TODO(barakmich): Sync size with writes.
 	if qs.size != -1 {
 		return qs.size
 	}
