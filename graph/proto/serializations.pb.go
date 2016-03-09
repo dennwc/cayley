@@ -125,6 +125,7 @@ type Value struct {
 	//	*Value_LangStr
 	//	*Value_Int
 	//	*Value_Float_
+	//	*Value_Boolean
 	//	*Value_Time
 	Value isValue_Value `protobuf_oneof:"value"`
 }
@@ -163,8 +164,11 @@ type Value_Int struct {
 type Value_Float_ struct {
 	Float_ float64 `protobuf:"fixed64,8,opt,name=float_,proto3,oneof"`
 }
+type Value_Boolean struct {
+	Boolean bool `protobuf:"varint,9,opt,name=boolean,proto3,oneof"`
+}
 type Value_Time struct {
-	Time *Value_Timestamp `protobuf:"bytes,9,opt,name=time,oneof"`
+	Time *Value_Timestamp `protobuf:"bytes,10,opt,name=time,oneof"`
 }
 
 func (*Value_Raw) isValue_Value()      {}
@@ -175,6 +179,7 @@ func (*Value_TypedStr) isValue_Value() {}
 func (*Value_LangStr) isValue_Value()  {}
 func (*Value_Int) isValue_Value()      {}
 func (*Value_Float_) isValue_Value()   {}
+func (*Value_Boolean) isValue_Value()  {}
 func (*Value_Time) isValue_Value()     {}
 
 func (m *Value) GetValue() isValue_Value {
@@ -240,6 +245,13 @@ func (m *Value) GetFloat_() float64 {
 	return 0
 }
 
+func (m *Value) GetBoolean() bool {
+	if x, ok := m.GetValue().(*Value_Boolean); ok {
+		return x.Boolean
+	}
+	return false
+}
+
 func (m *Value) GetTime() *Value_Timestamp {
 	if x, ok := m.GetValue().(*Value_Time); ok {
 		return x.Time
@@ -258,6 +270,7 @@ func (*Value) XXX_OneofFuncs() (func(msg proto1.Message, b *proto1.Buffer) error
 		(*Value_LangStr)(nil),
 		(*Value_Int)(nil),
 		(*Value_Float_)(nil),
+		(*Value_Boolean)(nil),
 		(*Value_Time)(nil),
 	}
 }
@@ -294,8 +307,15 @@ func _Value_OneofMarshaler(msg proto1.Message, b *proto1.Buffer) error {
 	case *Value_Float_:
 		_ = b.EncodeVarint(8<<3 | proto1.WireFixed64)
 		_ = b.EncodeFixed64(math.Float64bits(x.Float_))
+	case *Value_Boolean:
+		t := uint64(0)
+		if x.Boolean {
+			t = 1
+		}
+		_ = b.EncodeVarint(9<<3 | proto1.WireVarint)
+		_ = b.EncodeVarint(t)
 	case *Value_Time:
-		_ = b.EncodeVarint(9<<3 | proto1.WireBytes)
+		_ = b.EncodeVarint(10<<3 | proto1.WireBytes)
 		if err := b.EncodeMessage(x.Time); err != nil {
 			return err
 		}
@@ -367,7 +387,14 @@ func _Value_OneofUnmarshaler(msg proto1.Message, tag, wire int, b *proto1.Buffer
 		x, err := b.DecodeFixed64()
 		m.Value = &Value_Float_{math.Float64frombits(x)}
 		return true, err
-	case 9: // value.time
+	case 9: // value.boolean
+		if wire != proto1.WireVarint {
+			return true, proto1.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Value = &Value_Boolean{x != 0}
+		return true, err
+	case 10: // value.time
 		if wire != proto1.WireBytes {
 			return true, proto1.ErrInternalBadWireType
 		}
@@ -708,10 +735,22 @@ func (m *Value_Float_) MarshalTo(data []byte) (int, error) {
 	i = encodeFixed64Serializations(data, i, uint64(math.Float64bits(float64(m.Float_))))
 	return i, nil
 }
+func (m *Value_Boolean) MarshalTo(data []byte) (int, error) {
+	i := 0
+	data[i] = 0x48
+	i++
+	if m.Boolean {
+		data[i] = 1
+	} else {
+		data[i] = 0
+	}
+	i++
+	return i, nil
+}
 func (m *Value_Time) MarshalTo(data []byte) (int, error) {
 	i := 0
 	if m.Time != nil {
-		data[i] = 0x4a
+		data[i] = 0x52
 		i++
 		i = encodeVarintSerializations(data, i, uint64(m.Time.ProtoSize()))
 		n10, err := m.Time.MarshalTo(data[i:])
@@ -989,6 +1028,12 @@ func (m *Value_Float_) ProtoSize() (n int) {
 	var l int
 	_ = l
 	n += 9
+	return n
+}
+func (m *Value_Boolean) ProtoSize() (n int) {
+	var l int
+	_ = l
+	n += 2
 	return n
 }
 func (m *Value_Time) ProtoSize() (n int) {
@@ -1941,6 +1986,27 @@ func (m *Value) Unmarshal(data []byte) error {
 			v |= uint64(data[iNdEx-1]) << 56
 			m.Value = &Value_Float_{float64(math.Float64frombits(v))}
 		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Boolean", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSerializations
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			b := bool(v != 0)
+			m.Value = &Value_Boolean{b}
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Time", wireType)
 			}

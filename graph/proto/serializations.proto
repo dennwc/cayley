@@ -72,7 +72,8 @@ message Value {
     LangString  lang_str = 6;
     int64  int = 7;
     double float_ = 8;
-    Timestamp time = 9;
+    bool boolean = 9;
+    Timestamp time = 10;
   }
 }
 
