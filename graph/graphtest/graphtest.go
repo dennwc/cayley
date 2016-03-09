@@ -366,6 +366,7 @@ func TestLoadTypedQuads(t testing.TB, gen DatabaseFunc, typed bool) {
 		quad.LangString{Value: "value", Lang: "en"},
 		quad.Int(-123456789),
 		quad.Float(-12345e-6),
+		quad.Bool(true),
 		quad.Time(time.Now()),
 	}
 
@@ -376,6 +377,7 @@ func TestLoadTypedQuads(t testing.TB, gen DatabaseFunc, typed bool) {
 		{values[0], values[1], values[8], nil},
 		{values[0], values[1], values[9], nil},
 		{values[0], values[1], values[10], nil},
+		{values[0], values[1], values[11], nil},
 	})
 	require.Nil(t, err)
 	for _, pq := range values {
@@ -390,7 +392,7 @@ func TestLoadTypedQuads(t testing.TB, gen DatabaseFunc, typed bool) {
 			assert.Equal(t, quad.StringOf(pq), quad.StringOf(got), "Failed to roundtrip raw %q (%T)", pq, pq)
 		}
 	}
-	require.Equal(t, int64(6), qs.Size(), "Unexpected quadstore size")
+	require.Equal(t, int64(7), qs.Size(), "Unexpected quadstore size")
 }
 
 // TODO(dennwc): add tests to verify that QS behaves in a right way with IgnoreOptions,

@@ -35,6 +35,8 @@ func MakeValue(qv quad.Value) *Value {
 		return &Value{&Value_Int{int64(v)}}
 	case quad.Float:
 		return &Value{&Value_Float_{float64(v)}}
+	case quad.Bool:
+		return &Value{&Value_Boolean{bool(v)}}
 	case quad.Time:
 		t := time.Time(v)
 		seconds := t.Unix()
@@ -76,6 +78,8 @@ func (m *Value) ToNative() (qv quad.Value) {
 		return quad.Int(v.Int)
 	case *Value_Float_:
 		return quad.Float(v.Float_)
+	case *Value_Boolean:
+		return quad.Bool(v.Boolean)
 	case *Value_Time:
 		var t time.Time
 		if v.Time == nil {

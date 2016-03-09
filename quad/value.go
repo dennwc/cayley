@@ -98,6 +98,7 @@ const (
 	defaultNamespace     = `http://schema.org/`
 	defaultIntType   IRI = defaultNamespace + `Integer`
 	defaultFloatType IRI = defaultNamespace + `Float`
+	defaultBoolType  IRI = defaultNamespace + `Boolean`
 	defaultTimeType  IRI = defaultNamespace + `DateTime`
 )
 
@@ -117,6 +118,18 @@ type Float float64
 
 func (s Float) String() string {
 	return `"` + strconv.FormatFloat(float64(s), 'E', -1, 64) + `"^^<` + string(defaultFloatType) + `>`
+}
+
+// Bool is a native wrapper for bool type.
+//
+// It uses NQuad notation similar to TypedString.
+type Bool bool
+
+func (s Bool) String() string {
+	if bool(s) {
+		return `"True"^^<` + string(defaultBoolType) + `>`
+	}
+	return `"False"^^<` + string(defaultBoolType) + `>`
 }
 
 var _ Equaler = Time{}
