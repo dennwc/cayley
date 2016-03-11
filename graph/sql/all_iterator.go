@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"github.com/google/cayley/graph/proto"
 	"github.com/google/cayley/quad"
 )
 
@@ -146,24 +147,36 @@ func (it *AllIterator) Next() bool {
 		return false
 	}
 	if it.table == "nodes" {
-		var node string
+		var node []byte
 		err := it.cursor.Scan(&node)
 		if err != nil {
 			glog.Errorf("Error nexting node iterator: %v", err)
 			it.err = err
 			return false
 		}
-		it.result = quad.Raw(node)
+		v, err := proto.UnmarshalValue(node)
+		if err != nil {
+			glog.Errorf("Error nexting node iterator: %v", err)
+			it.err = err
+			return false
+		}
+		it.result = v
 		return true
 	}
-	var s, p, o, l string
+	var s, p, o, l []byte
 	err := it.cursor.Scan(&s, &p, &o, &l)
 	if err != nil {
 		glog.Errorf("Error scanning sql iterator: %v", err)
 		it.err = err
 		return false
 	}
-	it.result = quad.Make(s, p, o, l)
+	q, err := unmarshalQuadDirections(s, p, o, l)
+	if err != nil {
+		glog.Errorf("Error scanning sql iterator: %v", err)
+		it.err = err
+		return false
+	}
+	it.result = q
 	return graph.NextLogOut(it, it.result, true)
 }
 
