@@ -140,6 +140,11 @@ func testSet(qs graph.QuadStore) []test {
 			expect:  []quad.Value{vBob},
 		},
 		{
+			message: "use out (raw)",
+			path:    StartPath(qs, vAlice.String()).Out(vFollows.String()),
+			expect:  []quad.Value{vBob},
+		},
+		{
 			message: "use in",
 			path:    StartPathV(qs, vBob).In(vFollows),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
@@ -147,6 +152,11 @@ func testSet(qs graph.QuadStore) []test {
 		{
 			message: "use path Out",
 			path:    StartPathV(qs, vBob).Out(StartPathV(qs, vPredicate).Out(vAre)),
+			expect:  []quad.Value{vFred, vCool},
+		},
+		{
+			message: "use path Out (raw)",
+			path:    StartPath(qs, vBob.String()).Out(StartPath(qs, vPredicate.String()).Out(vAre.String())),
 			expect:  []quad.Value{vFred, vCool},
 		},
 		{
