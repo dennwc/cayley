@@ -319,6 +319,12 @@ func (p *Path) HasV(via interface{}, nodes ...quad.Value) *Path {
 // HasReverse limits the paths to be ones where some known node have some linkage
 // to the current nodes.
 func (p *Path) HasReverse(via interface{}, nodes ...string) *Path {
+	return p.HasReverseV(via, toRawValues(nodes)...)
+}
+
+// HasReverseV limits the paths to be ones where some known node have some linkage
+// to the current nodes.
+func (p *Path) HasReverseV(via interface{}, nodes ...quad.Value) *Path {
 	p.stack = append(p.stack, hasReverseMorphism(via, nodes...))
 	return p
 }

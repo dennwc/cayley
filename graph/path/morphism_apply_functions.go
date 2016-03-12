@@ -75,7 +75,7 @@ func hasMorphism(via interface{}, nodes ...quad.Value) morphism {
 	}
 }
 
-func hasReverseMorphism(via interface{}, nodes ...string) morphism {
+func hasReverseMorphism(via interface{}, nodes ...quad.Value) morphism {
 	return morphism{
 		Name:     "hasr",
 		Reversal: func(ctx *context) (morphism, *context) { return hasMorphism(via, nodes...), ctx },
@@ -299,7 +299,7 @@ func saveOptionalReverseMorphism(via interface{}, tag string) morphism {
 	}
 }
 
-func buildHas(qs graph.QuadStore, via interface{}, in graph.Iterator, reverse bool, nodes []string) graph.Iterator {
+func buildHas(qs graph.QuadStore, via interface{}, in graph.Iterator, reverse bool, nodes []quad.Value) graph.Iterator {
 	viaIter := buildViaPath(qs, via).
 		BuildIterator()
 	ends := func() graph.Iterator {

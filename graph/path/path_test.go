@@ -210,9 +210,9 @@ func testSet(qs graph.QuadStore) []test {
 		},
 		{
 			message: "show a simple saveOpt",
-			path:    StartPath(qs).SaveOptional("status", "somecool"),
+			path:    StartPath(qs).SaveOptional(vStatus, "somecool"),
 			tag:     "somecool",
-			expect:  []string{"", "", "", "", "", "", "", "", "", "", "cool_person", "cool_person", "cool_person", "smart_person", "smart_person"},
+			expect:  []quad.Value{nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, vCool, vCool, vCool, vSmart, vSmart},
 		},
 		{
 			message: "show a simple saveR",
@@ -232,8 +232,8 @@ func testSet(qs graph.QuadStore) []test {
 		},
 		{
 			message: "show a simple HasReverse",
-			path:    StartPath(qs).HasReverse("status", "bob"),
-			expect:  []string{"cool_person"},
+			path:    StartPath(qs).HasReverseV(vStatus, vBob),
+			expect:  []quad.Value{vCool},
 		},
 		{
 			message: "use .Tag()-.Is()-.Back()",
