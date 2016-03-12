@@ -232,7 +232,7 @@ func testSet(qs graph.QuadStore) []test {
 		},
 		{
 			message: "show a simple HasReverse",
-			path:    StartPath(qs).HasReverseV(vStatus, vBob),
+			path:    StartPath(qs).HasReverse(vStatus, vBob),
 			expect:  []quad.Value{vCool},
 		},
 		{
