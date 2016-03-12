@@ -29,11 +29,11 @@ var testReadCases = []struct {
   "term3": "v3"
 }`,
 		[]quad.Quad{
-			{`<http://example.org/id1>`, `<http://example.org/term1>`, `"v1"^^<http://example.org/datatype>`, ``},
-			{`<http://example.org/id1>`, `<http://example.org/term2>`, `<http://example.org/id2>`, ``},
-			{`<http://example.org/id1>`, `<http://example.org/term3>`, `"v3"@en`, ``},
-			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type1>`, ``},
-			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type2>`, ``},
+			{quad.IRI(`http://example.org/id1`), quad.IRI(`http://example.org/term1`), quad.TypedString{Value: "v1", Type: `http://example.org/datatype`}, nil},
+			{quad.IRI(`http://example.org/id1`), quad.IRI(`http://example.org/term2`), quad.IRI(`http://example.org/id2`), nil},
+			{quad.IRI(`http://example.org/id1`), quad.IRI(`http://example.org/term3`), quad.LangString{Value: "v3", Lang: "en"}, nil},
+			{quad.IRI(`http://example.org/id1`), quad.IRI(`http://www.w3.org/1999/02/22-rdf-syntax-ns#type`), quad.IRI(`http://example.org/Type1`), nil},
+			{quad.IRI(`http://example.org/id1`), quad.IRI(`http://www.w3.org/1999/02/22-rdf-syntax-ns#type`), quad.IRI(`http://example.org/Type2`), nil},
 		},
 	},
 }
@@ -54,6 +54,9 @@ func TestRead(t *testing.T) {
 		sort.Sort(ByQuad(quads))
 		sort.Sort(ByQuad(c.expect))
 		if !reflect.DeepEqual(quads, c.expect) {
+			for _, q := range quads {
+				t.Errorf("%+v (%T %T %T %T)", q, q.Subject, q.Predicate, q.Object, q.Label)
+			}
 			t.Errorf("case %d failed: wrong quads returned:\n%v\n%v", i, quads, c.expect)
 		}
 		r.Close()
@@ -67,11 +70,11 @@ var testWriteCases = []struct {
 }{
 	{
 		[]quad.Quad{
-			{`<http://example.org/id1>`, `<http://example.org/term1>`, `"v1"^^<http://example.org/datatype>`, ``},
-			{`<http://example.org/id1>`, `<http://example.org/term2>`, `<http://example.org/id2>`, ``},
-			{`<http://example.org/id1>`, `<http://example.org/term3>`, `"v3"@en`, ``},
-			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type1>`, ``},
-			{`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type2>`, ``},
+			quad.Make(`<http://example.org/id1>`, `<http://example.org/term1>`, `"v1"^^<http://example.org/datatype>`, ``),
+			quad.Make(`<http://example.org/id1>`, `<http://example.org/term2>`, `<http://example.org/id2>`, ``),
+			quad.Make(`<http://example.org/id1>`, `<http://example.org/term3>`, `"v3"@en`, ``),
+			quad.Make(`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type1>`, ``),
+			quad.Make(`<http://example.org/id1>`, `<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>`, `<http://example.org/Type2>`, ``),
 		},
 		map[string]interface{}{
 			"ex": "http://example.org/",

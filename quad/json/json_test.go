@@ -91,8 +91,8 @@ var writeTests = []struct {
 	{
 		message: "write JSON",
 		input: []quad.Quad{
-			{"foo", "bar", "baz", ""},
-			{"foo", "bar", "baz", "graph"},
+			quad.Make("foo", "bar", "baz", ""),
+			quad.Make("foo", "bar", "baz", "graph"),
 		},
 		expect: `[
 	{"subject":"foo","predicate":"bar","object":"baz"},

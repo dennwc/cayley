@@ -14,24 +14,24 @@ var testData = []struct {
 }{
 	{
 		[]quad.Quad{
-			quad.Quad{
-				Subject:   "_:subject1",
-				Predicate: "</film/performance/character>",
-				Object:    `"Tomás de Torquemada"`,
-				Label:     "",
-			},
-			quad.Quad{
-				Subject:   "_:subject1",
-				Predicate: "<http://an.example/predicate1>",
-				Object:    `"object1"`,
-				Label:     "",
-			},
-			quad.Quad{
-				Subject:   "<http://example.org/bob#me>",
-				Predicate: "<http://schema.org/birthDate>",
-				Object:    `"1990-07-04"^^<http://www.w3.org/2001/XMLSchema#date>`,
-				Label:     "",
-			},
+			quad.Make(
+				"_:subject1",
+				"</film/performance/character>",
+				`"Tomás de Torquemada"`,
+				"",
+			),
+			quad.Make(
+				"_:subject1",
+				"<http://an.example/predicate1>",
+				`"object1"`,
+				"",
+			),
+			quad.Make(
+				"<http://example.org/bob#me>",
+				"<http://schema.org/birthDate>",
+				`"1990-07-04"^^<http://www.w3.org/2001/XMLSchema#date>`,
+				"",
+			),
 		},
 		`<?xml version="1.0" encoding="UTF-8"?>
 <graphml xmlns="http://graphml.graphdrawing.org/xmlns"

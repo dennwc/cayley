@@ -66,8 +66,8 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 		w.written = true
 		w.nodes = make(map[string]int)
 	}
-	s := w.writeNode(q.Subject)
-	o := w.writeNode(q.Object)
+	s := w.writeNode(quad.StringOf(q.Subject))
+	o := w.writeNode(quad.StringOf(q.Object))
 	if w.err != nil {
 		return w.err
 	}
@@ -75,7 +75,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 	if w.err != nil {
 		return w.err
 	}
-	if w.err = xml.EscapeText(w.w, []byte(q.Predicate)); w.err != nil {
+	if w.err = xml.EscapeText(w.w, []byte(quad.StringOf(q.Predicate))); w.err != nil {
 		return w.err
 	}
 	_, w.err = w.w.Write([]byte("</data></edge>\n"))

@@ -167,11 +167,11 @@ func (enc *Encoder) writeValue(s string) {
 	_, enc.err = enc.w.Write([]byte(s + " ")) // TODO(dennwc): proper escaping
 }
 func (enc *Encoder) WriteQuad(q quad.Quad) error {
-	enc.writeValue(q.Subject)
-	enc.writeValue(q.Predicate)
-	enc.writeValue(q.Object)
-	if q.Label != "" {
-		enc.writeValue(q.Label)
+	enc.writeValue(quad.StringOf(q.Subject))
+	enc.writeValue(quad.StringOf(q.Predicate))
+	enc.writeValue(quad.StringOf(q.Object))
+	if q.Label != nil {
+		enc.writeValue(quad.StringOf(q.Label))
 	}
 	if enc.err != nil {
 		return enc.err

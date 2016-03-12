@@ -3,6 +3,7 @@ package jsonld
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/turtle"
 	"github.com/linkeddata/gojsonld"
@@ -46,6 +47,28 @@ type Reader struct {
 	graphs map[string][]*gojsonld.Triple
 }
 
+func toQuadValue(t gojsonld.Term) quad.Value {
+	if t == nil {
+		return nil
+	}
+	switch v := t.(type) {
+	case *gojsonld.Resource:
+		return quad.IRI(v.URI)
+	case *gojsonld.Literal:
+		val := quad.String(v.Value)
+		if v.Language != "" {
+			return quad.LangString{Value: val, Lang: v.Language}
+		} else if v.Datatype != nil {
+			return quad.TypedString{Value: val, Type: toQuadValue(v.Datatype).(quad.IRI)}
+		}
+		return val
+	case *gojsonld.BlankNode:
+		return quad.BNode(v.ID)
+	default:
+		panic(fmt.Errorf("unknown term type: %T", t))
+	}
+}
+
 func (r *Reader) ReadQuad() (quad.Quad, error) {
 	if r.err != nil {
 		return quad.Quad{}, r.err
@@ -68,14 +91,14 @@ next:
 	}
 	cur := r.graphs[r.name][r.n]
 	r.n++
-	graph := r.name
-	if graph == "@default" {
-		graph = ""
+	var graph quad.Value
+	if r.name != "" && r.name != "@default" {
+		graph = quad.Raw(r.name)
 	}
 	return quad.Quad{
-		Subject:   cur.Subject.String(),
-		Predicate: cur.Predicate.String(),
-		Object:    cur.Object.String(),
+		Subject:   toQuadValue(cur.Subject),
+		Predicate: toQuadValue(cur.Predicate),
+		Object:    toQuadValue(cur.Object),
 		Label:     graph,
 	}, nil
 }
@@ -100,15 +123,15 @@ func (w *Writer) SetLdContext(ctx interface{}) {
 }
 
 func (w *Writer) WriteQuad(q quad.Quad) error {
-	graph := q.Label
+	graph := quad.StringOf(q.Label)
 	if graph == "" {
 		graph = "@default"
 	}
 	g := w.ds.Graphs[graph]
 	g = append(g, gojsonld.NewTriple(
-		parseTerm(q.Subject),
-		parseTerm(q.Predicate),
-		parseTerm(q.Object),
+		toTerm(q.Subject),
+		toTerm(q.Predicate),
+		toTerm(q.Object),
 	))
 	w.ds.Graphs[graph] = g
 	return nil
@@ -128,8 +151,33 @@ func (w *Writer) Close() error {
 	return json.NewEncoder(w.w).Encode(data)
 }
 
-func parseTerm(s string) gojsonld.Term {
-	t := turtle.ParseTerm(s)
+func toTerm(qv quad.Value) gojsonld.Term {
+	if qv == nil {
+		return nil
+	}
+	switch v := qv.(type) {
+	case quad.IRI:
+		return gojsonld.NewResource(string(v))
+	case quad.BNode:
+		return gojsonld.NewBlankNode(string(v))
+	case quad.TypedString:
+		return gojsonld.NewLiteralWithDatatype(
+			string(v.Value),
+			gojsonld.NewResource(string(v.Type)),
+		)
+	case quad.LangString:
+		return gojsonld.NewLiteralWithLanguageAndDatatype(
+			string(v.Value),
+			string(v.Lang),
+			gojsonld.NewResource(gojsonld.XSD_STRING),
+		)
+	case quad.String:
+		return gojsonld.NewLiteralWithDatatype(
+			string(v),
+			gojsonld.NewResource(gojsonld.XSD_STRING),
+		)
+	}
+	t := turtle.ParseTerm(quad.StringOf(qv))
 	switch v := t.(type) {
 	case turtle.IRI:
 		return gojsonld.NewResource(string(v))
@@ -154,6 +202,6 @@ func parseTerm(s string) gojsonld.Term {
 			)
 		}
 	default:
-		return gojsonld.NewLiteralWithDatatype(s, gojsonld.NewResource(gojsonld.XSD_STRING))
+		return gojsonld.NewLiteralWithDatatype(quad.StringOf(qv), gojsonld.NewResource(gojsonld.XSD_STRING))
 	}
 }
