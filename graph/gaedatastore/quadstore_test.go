@@ -72,7 +72,7 @@ func makeTestStore(data []quad.Quad, opts graph.Options) (graph.QuadStore, graph
 			}
 		}
 	}
-	writer.AddQuadSet(data)
+	writer.WriteQuads(data)
 	return qs, writer, ind
 }
 

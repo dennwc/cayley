@@ -24,6 +24,7 @@ package graph
 import (
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/google/cayley/quad"
 )
@@ -218,4 +219,38 @@ func QuadStores() []string {
 		t = append(t, n)
 	}
 	return t
+}
+
+// NewQuadReader returns a quad.Reader, that will read all quads from the store.
+func NewQuadReader(qs QuadStore) quad.ReadCloser {
+	return NewQuadReaderWithIterator(qs, qs.QuadsAllIterator())
+}
+
+// NewQuadReaderWithIterator returns a quad.Reader that reads quads from a given iterator.
+//
+// Closing a reader will also close an iterator.
+func NewQuadReaderWithIterator(qs QuadStore, it Iterator) quad.ReadCloser {
+	nexter, ok := it.(Nexter)
+	if !ok {
+		panic("iterator is not a Nexter")
+	}
+	return &iteratorReader{qs: qs, it: nexter}
+}
+
+type iteratorReader struct {
+	qs QuadStore
+	it Nexter
+}
+
+func (r *iteratorReader) ReadQuad() (quad.Quad, error) {
+	if r.it.Next() {
+		return r.qs.Quad(r.it.Result()), nil
+	}
+	if err := r.it.Err(); err != nil {
+		return quad.Quad{}, err
+	}
+	return quad.Quad{}, io.EOF
+}
+func (r *iteratorReader) Close() error {
+	return r.it.Close()
 }

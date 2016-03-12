@@ -56,9 +56,6 @@ The necessary component to make mid-query limit work. Acts as a limit on Next(),
 
 ## Medium Term
 
-### Direct JSON-LD loading
-  Because it's useful markup, and JSON is easy for Go to deal with. The NQuads library is nicely self-contained, there's no reason more formats can't be supported.
-
 ### Value indexing
   Since I have value comparison. It works, it's just not fast today. That could be improved.
 

@@ -14,6 +14,10 @@ import (
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
 	"github.com/google/cayley/quad/nquads"
+
+	// Register other supported decoding formats
+	_ "github.com/google/cayley/quad/json"
+	_ "github.com/google/cayley/quad/jsonld"
 )
 
 // Load loads a graph from the given path and write it to qw.  See
@@ -25,7 +29,7 @@ func Load(qw graph.QuadWriter, cfg *config.Config, path, typ string) error {
 // DecompressAndLoad will load or fetch a graph from the given path, decompress
 // it, and then call the given load function to process the decompressed graph.
 // If no loadFn is provided, db.Load is called.
-func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string, loadFn func(graph.QuadWriter, *config.Config, quad.Unmarshaler) error) error {
+func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string, loadFn func(graph.QuadWriter, *config.Config, quad.Reader) error) error {
 	var r io.Reader
 
 	if path == "" {
@@ -64,15 +68,20 @@ func DecompressAndLoad(qw graph.QuadWriter, cfg *config.Config, path, typ string
 		return err
 	}
 
-	var dec quad.Unmarshaler
+	var dec quad.ReadCloser
 	switch typ {
-	case "cquad":
+	case "cquad", "cquads":
 		dec = cquads.NewDecoder(r)
-	case "nquad":
+	case "nquad", "nquads":
 		dec = nquads.NewDecoder(r)
 	default:
-		return fmt.Errorf("unknown quad format %q", typ)
+		format := quad.FormatByName(typ)
+		if format == nil || format.Reader == nil {
+			return fmt.Errorf("unknown quad format %q", typ)
+		}
+		dec = format.Reader(r)
 	}
+	defer dec.Close()
 
 	if loadFn != nil {
 		return loadFn(qw, cfg, dec)

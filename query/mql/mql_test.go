@@ -56,7 +56,7 @@ func makeTestSession(data []quad.Quad) *Session {
 	qs, _ := graph.NewQuadStore("memstore", "", nil)
 	w, _ := graph.NewQuadWriter("single", qs, nil)
 	for _, t := range data {
-		w.AddQuad(t)
+		w.WriteQuad(t)
 	}
 	return NewSession(qs)
 }

@@ -66,7 +66,7 @@ func NewSingleReplication(qs graph.QuadStore, opts graph.Options) (graph.QuadWri
 	}, nil
 }
 
-func (s *Single) AddQuad(q quad.Quad) error {
+func (s *Single) WriteQuad(q quad.Quad) error {
 	deltas := make([]graph.Delta, 1)
 	deltas[0] = graph.Delta{
 		ID:        s.currentID.Next(),
@@ -77,7 +77,11 @@ func (s *Single) AddQuad(q quad.Quad) error {
 	return s.qs.ApplyDeltas(deltas, s.ignoreOpts)
 }
 
-func (s *Single) AddQuadSet(set []quad.Quad) error {
+func (s *Single) AddQuad(q quad.Quad) error {
+	return s.WriteQuad(q)
+}
+
+func (s *Single) WriteQuads(set []quad.Quad) (int, error) {
 	deltas := make([]graph.Delta, len(set))
 	for i, q := range set {
 		deltas[i] = graph.Delta{
@@ -87,8 +91,15 @@ func (s *Single) AddQuadSet(set []quad.Quad) error {
 			Timestamp: time.Now(),
 		}
 	}
+	if err := s.qs.ApplyDeltas(deltas, s.ignoreOpts); err != nil {
+		return 0, err
+	}
+	return len(set), nil
+}
 
-	return s.qs.ApplyDeltas(deltas, s.ignoreOpts)
+func (s *Single) AddQuadSet(set []quad.Quad) error {
+	_, err := s.WriteQuads(set)
+	return err
 }
 
 func (s *Single) RemoveQuad(q quad.Quad) error {

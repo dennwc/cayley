@@ -15,10 +15,7 @@
 package http
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 
@@ -28,41 +25,36 @@ import (
 	"github.com/google/cayley/internal"
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
+	"github.com/google/cayley/quad/json"
 )
 
-func ParseJSONToQuadList(jsonBody []byte) ([]quad.Quad, error) {
-	var quads []quad.Quad
-	err := json.Unmarshal(jsonBody, &quads)
-	if err != nil {
-		return nil, err
+func quadReaderFromRequest(r *http.Request) (qr quad.ReadCloser) {
+	format := quad.FormatByMime(r.Header.Get(`Content-Type`))
+	if format != nil && format.Reader != nil {
+		qr = format.Reader(r.Body)
+	} else {
+		qr = json.NewReader(r.Body)
 	}
-	for i, q := range quads {
-		if !q.IsValid() {
-			return nil, fmt.Errorf("invalid quad at index %d. %s", i, q)
-		}
-	}
-	return quads, nil
+	return
 }
 
 func (api *API) ServeV1Write(w http.ResponseWriter, r *http.Request, _ httprouter.Params) int {
 	if api.config.ReadOnly {
 		return jsonResponse(w, 400, "Database is read-only.")
 	}
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return jsonResponse(w, 400, err)
-	}
-	quads, err := ParseJSONToQuadList(bodyBytes)
-	if err != nil {
-		return jsonResponse(w, 400, err)
-	}
+	qr := quadReaderFromRequest(r)
+	defer qr.Close()
+
 	h, err := api.GetHandleForRequest(r)
 	if err != nil {
 		return jsonResponse(w, 400, err)
 	}
+	n, err := quad.Copy(h, qr)
+	if err != nil {
+		return jsonResponse(w, 400, err)
+	}
 
-	h.QuadWriter.AddQuadSet(quads)
-	fmt.Fprintf(w, "{\"result\": \"Successfully wrote %d quads.\"}", len(quads))
+	fmt.Fprintf(w, "{\"result\": \"Successfully wrote %d quads.\"}", n)
 	return 200
 }
 
@@ -92,27 +84,10 @@ func (api *API) ServeV1WriteNQuad(w http.ResponseWriter, r *http.Request, params
 		return jsonResponse(w, 400, err)
 	}
 
-	var (
-		n     int
-		block = make([]quad.Quad, 0, blockSize)
-	)
-	for {
-		t, err := dec.Unmarshal()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			glog.Fatalln("what can do this here?", err) // FIXME(kortschak)
-		}
-		block = append(block, t)
-		n++
-		if len(block) == cap(block) {
-			h.QuadWriter.AddQuadSet(block)
-			block = block[:0]
-		}
+	n, err := quad.CopyBatch(h, dec, int(blockSize))
+	if err != nil {
+		return jsonResponse(w, 400, err)
 	}
-	h.QuadWriter.AddQuadSet(block)
-
 	fmt.Fprintf(w, "{\"result\": \"Successfully wrote %d quads.\"}", n)
 
 	return 200
@@ -122,11 +97,9 @@ func (api *API) ServeV1Delete(w http.ResponseWriter, r *http.Request, params htt
 	if api.config.ReadOnly {
 		return jsonResponse(w, 400, "Database is read-only.")
 	}
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return jsonResponse(w, 400, err)
-	}
-	quads, err := ParseJSONToQuadList(bodyBytes)
+	qr := quadReaderFromRequest(r)
+	quads, err := quad.ReadAll(qr)
+	qr.Close()
 	if err != nil {
 		return jsonResponse(w, 400, err)
 	}

@@ -103,7 +103,7 @@ func TestLoadDatabase(t *testing.T) {
 	}
 
 	w, _ := writer.NewSingleReplication(qs, nil)
-	err = w.AddQuad(quad.Make(
+	err = w.WriteQuad(quad.Make(
 		"Something",
 		"points_to",
 		"Something Else",
@@ -143,7 +143,7 @@ func TestLoadDatabase(t *testing.T) {
 		t.Errorf("Unexpected horizon value, got:%d expect:1", horizon.Int())
 	}
 
-	w.AddQuadSet(graphtest.MakeQuadSet())
+	w.WriteQuads(graphtest.MakeQuadSet())
 	if s := qs.Size(); s != 12 {
 		t.Errorf("Unexpected quadstore size, got:%d expect:12", s)
 	}

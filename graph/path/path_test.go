@@ -53,7 +53,7 @@ func loadGraph(path string, t testing.TB) []quad.Quad {
 	r = f
 
 	dec := cquads.NewDecoder(r)
-	for q1, err := dec.Unmarshal(); err == nil; q1, err = dec.Unmarshal() {
+	for q1, err := dec.ReadQuad(); err == nil; q1, err = dec.Unmarshal() {
 		simpleGraph = append(simpleGraph, q1)
 	}
 	if err != nil {
@@ -67,7 +67,7 @@ func makeTestStore(t testing.TB) graph.QuadStore {
 	qs, _ := graph.NewQuadStore("memstore", "", nil)
 	w, _ := graph.NewQuadWriter("single", qs, nil)
 	for _, t := range simpleGraph {
-		w.AddQuad(t)
+		w.WriteQuad(t)
 	}
 	return qs
 }

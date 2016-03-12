@@ -152,7 +152,7 @@ func Repl(h *graph.Handle, queryLanguage string, cfg *config.Config) error {
 					continue
 				}
 
-				h.QuadWriter.AddQuad(quad)
+				h.QuadWriter.WriteQuad(quad)
 				continue
 
 			case ":d":
