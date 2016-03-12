@@ -140,140 +140,140 @@ func testSet(qs graph.QuadStore) []test {
 	return []test{
 		{
 			message: "use out",
-			path:    StartPathV(qs, vAlice).Out(vFollows),
+			path:    StartPath(qs, vAlice).Out(vFollows),
 			expect:  []quad.Value{vBob},
 		},
 		{
 			message: "use out (raw)",
-			path:    StartPath(qs, vAlice.String()).Out(vFollows.String()),
+			path:    StartPath(qs, quad.Raw(vAlice.String())).Out(quad.Raw(vFollows.String())),
 			expect:  []quad.Value{vBob},
 		},
 		{
 			message: "use in",
-			path:    StartPathV(qs, vBob).In(vFollows),
+			path:    StartPath(qs, vBob).In(vFollows),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
 		},
 		{
 			message: "use path Out",
-			path:    StartPathV(qs, vBob).Out(StartPathV(qs, vPredicate).Out(vAre)),
+			path:    StartPath(qs, vBob).Out(StartPath(qs, vPredicate).Out(vAre)),
 			expect:  []quad.Value{vFred, vCool},
 		},
 		{
 			message: "use path Out (raw)",
-			path:    StartPath(qs, vBob.String()).Out(StartPath(qs, vPredicate.String()).Out(vAre.String())),
+			path:    StartPath(qs, quad.Raw(vBob.String())).Out(StartPath(qs, quad.Raw(vPredicate.String())).Out(quad.Raw(vAre.String()))),
 			expect:  []quad.Value{vFred, vCool},
 		},
 		{
 			message: "use And",
-			path: StartPathV(qs, vDani).Out(vFollows).And(
-				StartPathV(qs, vCharlie).Out(vFollows)),
+			path: StartPath(qs, vDani).Out(vFollows).And(
+				StartPath(qs, vCharlie).Out(vFollows)),
 			expect: []quad.Value{vBob},
 		},
 		{
 			message: "use Or",
-			path: StartPathV(qs, vFred).Out(vFollows).Or(
-				StartPathV(qs, vAlice).Out(vFollows)),
+			path: StartPath(qs, vFred).Out(vFollows).Or(
+				StartPath(qs, vAlice).Out(vFollows)),
 			expect: []quad.Value{vBob, vGreg},
 		},
 		{
 			message: "implicit All",
-			path:    StartPathV(qs),
+			path:    StartPath(qs),
 			expect:  []quad.Value{vAlice, vBob, vCharlie, vDani, vEmily, vFred, vGreg, vFollows, vStatus, vCool, vPredicate, vAre, vSmartGraph, vSmart},
 		},
 		{
 			message: "follow",
-			path:    StartPathV(qs, vCharlie).Follow(StartMorphism().Out(vFollows).Out(vFollows)),
+			path:    StartPath(qs, vCharlie).Follow(StartMorphism().Out(vFollows).Out(vFollows)),
 			expect:  []quad.Value{vBob, vFred, vGreg},
 		},
 		{
 			message: "followR",
-			path:    StartPathV(qs, vFred).FollowReverse(StartMorphism().Out(vFollows).Out(vFollows)),
+			path:    StartPath(qs, vFred).FollowReverse(StartMorphism().Out(vFollows).Out(vFollows)),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
 		},
 		{
 			message: "is, tag, instead of FollowR",
-			path:    StartPathV(qs).Tag("first").Follow(StartMorphism().Out(vFollows).Out(vFollows)).IsV(vFred),
+			path:    StartPath(qs).Tag("first").Follow(StartMorphism().Out(vFollows).Out(vFollows)).Is(vFred),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
 			tag:     "first",
 		},
 		{
 			message: "use Except to filter out a single vertex",
-			path:    StartPathV(qs, vAlice, vBob).Except(StartPathV(qs, vAlice)),
+			path:    StartPath(qs, vAlice, vBob).Except(StartPath(qs, vAlice)),
 			expect:  []quad.Value{vBob},
 		},
 		{
 			message: "use chained Except",
-			path:    StartPathV(qs, vAlice, vBob, vCharlie).Except(StartPathV(qs, vBob)).Except(StartPathV(qs, vAlice)),
+			path:    StartPath(qs, vAlice, vBob, vCharlie).Except(StartPath(qs, vBob)).Except(StartPath(qs, vAlice)),
 			expect:  []quad.Value{vCharlie},
 		},
 		{
 			message: "show a simple save",
-			path:    StartPathV(qs).Save(vStatus, "somecool"),
+			path:    StartPath(qs).Save(vStatus, "somecool"),
 			tag:     "somecool",
 			expect:  []quad.Value{vCool, vCool, vCool, vSmart, vSmart},
 		},
 		{
 			message: "show a simple saveR",
-			path:    StartPathV(qs, vCool).SaveReverse(vStatus, "who"),
+			path:    StartPath(qs, vCool).SaveReverse(vStatus, "who"),
 			tag:     "who",
 			expect:  []quad.Value{vGreg, vDani, vBob},
 		},
 		{
 			message: "show a simple Has",
-			path:    StartPathV(qs).HasV(vStatus, vCool),
+			path:    StartPath(qs).Has(vStatus, vCool),
 			expect:  []quad.Value{vGreg, vDani, vBob},
 		},
 		{
 			message: "show a double Has",
-			path:    StartPathV(qs).HasV(vStatus, vCool).HasV(vFollows, vFred),
+			path:    StartPath(qs).Has(vStatus, vCool).Has(vFollows, vFred),
 			expect:  []quad.Value{vBob},
 		},
 		{
 			message: "use .Tag()-.Is()-.Back()",
-			path:    StartPathV(qs, vBob).In(vFollows).Tag("foo").Out(vStatus).IsV(vCool).Back("foo"),
+			path:    StartPath(qs, vBob).In(vFollows).Tag("foo").Out(vStatus).Is(vCool).Back("foo"),
 			expect:  []quad.Value{vDani},
 		},
 		{
 			message: "do multiple .Back()s",
-			path:    StartPathV(qs, vEmily).Out(vFollows).Tag("f").Out(vFollows).Out(vStatus).IsV(vCool).Back("f").In(vFollows).In(vFollows).Tag("acd").Out(vStatus).IsV(vCool).Back("f"),
+			path:    StartPath(qs, vEmily).Out(vFollows).Tag("f").Out(vFollows).Out(vStatus).Is(vCool).Back("f").In(vFollows).In(vFollows).Tag("acd").Out(vStatus).Is(vCool).Back("f"),
 			tag:     "acd",
 			expect:  []quad.Value{vDani},
 		},
 		{
 			message: "InPredicates()",
-			path:    StartPathV(qs, vBob).InPredicates(),
+			path:    StartPath(qs, vBob).InPredicates(),
 			expect:  []quad.Value{vFollows},
 		},
 		{
 			message: "OutPredicates()",
-			path:    StartPathV(qs, vBob).OutPredicates(),
+			path:    StartPath(qs, vBob).OutPredicates(),
 			expect:  []quad.Value{vFollows, vStatus},
 		},
 		// Morphism tests
 		{
 			message: "show simple morphism",
-			path:    StartPathV(qs, vCharlie).Follow(grandfollows),
+			path:    StartPath(qs, vCharlie).Follow(grandfollows),
 			expect:  []quad.Value{vGreg, vFred, vBob},
 		},
 		{
 			message: "show reverse morphism",
-			path:    StartPathV(qs, vFred).FollowReverse(grandfollows),
+			path:    StartPath(qs, vFred).FollowReverse(grandfollows),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
 		},
 		// Context tests
 		{
 			message: "query without label limitation",
-			path:    StartPathV(qs, vGreg).Out(vStatus),
+			path:    StartPath(qs, vGreg).Out(vStatus),
 			expect:  []quad.Value{vSmart, vCool},
 		},
 		{
 			message: "query with label limitation",
-			path:    StartPathV(qs, vGreg).LabelContext(vSmartGraph).Out(vStatus),
+			path:    StartPath(qs, vGreg).LabelContext(vSmartGraph).Out(vStatus),
 			expect:  []quad.Value{vSmart},
 		},
 		{
 			message: "reverse context",
-			path:    StartPathV(qs, vGreg).Tag("base").LabelContext(vSmartGraph).Out(vStatus).Tag("status").Back("base"),
+			path:    StartPath(qs, vGreg).Tag("base").LabelContext(vSmartGraph).Out(vStatus).Tag("status").Back("base"),
 			expect:  []quad.Value{vGreg},
 		},
 		// Optional tests

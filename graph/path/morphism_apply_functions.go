@@ -390,9 +390,9 @@ func buildViaPath(qs graph.QuadStore, via ...interface{}) *Path {
 			}
 			return p
 		case quad.Value:
-			return StartPathV(qs, p)
-		case string:
 			return StartPath(qs, p)
+		case string:
+			return StartPath(qs, quad.Raw(p))
 		default:
 			panic(fmt.Sprintln("Invalid type passed to buildViaPath.", reflect.TypeOf(v), p))
 		}
@@ -408,5 +408,5 @@ func buildViaPath(qs graph.QuadStore, via ...interface{}) *Path {
 			panic("Non-value type passed to long Via path")
 		}
 	}
-	return StartPathV(qs, nodes...)
+	return StartPath(qs, nodes...)
 }
