@@ -5,8 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"github.com/google/cayley/quad"
-	"github.com/google/cayley/quad/cquads"
-	"github.com/google/cayley/quad/pquads"
+	_ "github.com/google/cayley/quad/cquads"
+	_ "github.com/google/cayley/quad/gml"
+	_ "github.com/google/cayley/quad/graphml"
+	_ "github.com/google/cayley/quad/json"
+	_ "github.com/google/cayley/quad/jsonld"
+	_ "github.com/google/cayley/quad/pquads"
 	"io"
 	"log"
 	"os"
@@ -15,23 +19,17 @@ import (
 	"time"
 )
 
-type quadReader struct {
-	r interface {
-		Unmarshal() (quad.Quad, error)
+type writeHook struct {
+	w quad.Writer
+	f func()
+}
+
+func (w writeHook) WriteQuad(q quad.Quad) error {
+	if err := w.w.WriteQuad(q); err != nil {
+		return err
 	}
-}
-
-func (r quadReader) ReadQuad() (quad.Quad, error) {
-	return r.r.Unmarshal()
-}
-
-type nquadsWriter struct {
-	w io.Writer
-}
-
-func (w nquadsWriter) WriteQuad(q quad.Quad) error {
-	_, err := fmt.Fprintln(w.w, q.NQuad())
-	return err
+	w.f()
+	return nil
 }
 
 func main() {
@@ -42,10 +40,8 @@ func main() {
 		os.Exit(1)
 	}
 	start := time.Now()
-	var qw interface {
-		WriteQuad(q quad.Quad) error
-	}
-	var cnt int64
+	var qw quad.WriteCloser
+	var cnt int
 	{
 		name := args[len(args)-1]
 		args = args[:len(args)-1]
@@ -62,22 +58,17 @@ func main() {
 			defer gz.Close()
 			w = gz
 		}
-		switch ext {
-		case ".pq":
-			qw = pquads.NewWriter(w)
-		case ".nq":
-			log.Println("WARNING: nquads parser has bad escaping")
-			qw = nquadsWriter{w}
-		default:
+		f := quad.FormatByExt(ext)
+		if f == nil || f.Writer == nil {
 			log.Fatal("unknown extension:", ext)
 		}
+		qw = f.Writer(w)
 	}
+	defer qw.Close()
 	var errored bool
 	for _, name := range args {
 		err := func() error {
-			var qr interface {
-				ReadQuad() (quad.Quad, error)
-			}
+			var qr quad.ReadCloser
 			file, err := os.Open(name)
 			if err != nil {
 				return err
@@ -95,30 +86,19 @@ func main() {
 				defer gz.Close()
 				r = gz
 			}
-			switch ext {
-			case ".pq":
-				qr = pquads.NewReader(r)
-			case ".nq":
-				qr = quadReader{cquads.NewDecoder(r)}
-			default:
+			f := quad.FormatByExt(ext)
+			if f == nil || f.Reader == nil {
 				return fmt.Errorf("unknown extension: %v", ext)
 			}
-			for {
-				q, err := qr.ReadQuad()
-				if err == io.EOF {
-					return nil
-				} else if err != nil {
-					return fmt.Errorf("failed to read quad: %v", err)
-				}
-				if err = qw.WriteQuad(q); err != nil {
-					return fmt.Errorf("failed to write quad: %v", err)
-				}
+			qr = f.Reader(r)
+			defer qr.Close()
+			_, err = quad.Copy(writeHook{w: qw, f: func() {
 				cnt++
 				if cnt%(1000*1000) == 0 {
 					log.Printf("written %dM quads in %v", cnt/1000/1000, time.Since(start))
 				}
-			}
-			return nil
+			}}, qr)
+			return err
 		}()
 		if err != nil {
 			log.Println("error:", err)

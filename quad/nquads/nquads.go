@@ -34,9 +34,9 @@ import (
 
 func init() {
 	quad.RegisterFormat(quad.Format{
-		Name:   "nquads",
-		Ext:    []string{".nq", ".nt"},
-		Mime:   []string{"application/n-quads", "application/n-triples"},
+		Name: "nquads",
+		//Ext:    []string{".nq", ".nt"},
+		//Mime:   []string{"application/n-quads", "application/n-triples"},
 		Reader: func(r io.Reader) quad.ReadCloser { return NewDecoder(r) },
 		Writer: func(w io.Writer) quad.WriteCloser { return NewEncoder(w) },
 	})
@@ -164,7 +164,7 @@ func (enc *Encoder) writeValue(s string) {
 	if enc.err != nil {
 		return
 	}
-	_, enc.err = enc.w.Write([]byte(s + " ")) // TODO(dennwc): proper escaping
+	_, enc.err = enc.w.Write([]byte(s + " "))
 }
 func (enc *Encoder) WriteQuad(q quad.Quad) error {
 	enc.writeValue(quad.StringOf(q.Subject))

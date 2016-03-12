@@ -9,6 +9,16 @@ import (
 	"io"
 )
 
+func init() {
+	quad.RegisterFormat(quad.Format{
+		Name:   "pquads",
+		Ext:    []string{".pq"},
+		Mime:   []string{"application/octet-stream", "application/protobuf"},
+		Reader: func(r io.Reader) quad.ReadCloser { return NewReader(r) },
+		Writer: func(w io.Writer) quad.WriteCloser { return NewWriter(w) },
+	})
+}
+
 func NewWriter(w io.Writer) *Writer {
 	return &Writer{
 		w: w,
@@ -35,6 +45,7 @@ func (w *Writer) WriteQuad(q quad.Quad) error {
 	_, err := w.w.Write(w.buf[:n+sz])
 	return err
 }
+func (w *Writer) Close() error { return nil }
 
 func NewReader(r io.Reader) *Reader {
 	if br, ok := r.(io.ByteReader); ok {
@@ -72,3 +83,4 @@ func (r *Reader) ReadQuad() (quad.Quad, error) {
 	}
 	return pq.ToNative(), nil
 }
+func (w *Reader) Close() error { return nil }

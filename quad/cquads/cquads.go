@@ -35,10 +35,11 @@ import (
 
 func init() {
 	quad.RegisterFormat(quad.Format{
-		Name: "cquads",
-		//Ext:    []string{".nq", ".nt"},
-		//Mime:   []string{"application/n-quads", "application/n-triples"},
+		Name:   "cquads",
+		Ext:    []string{".nq", ".nt"},
+		Mime:   []string{"application/n-quads", "application/n-triples"},
 		Reader: func(r io.Reader) quad.ReadCloser { return NewDecoder(r) },
+		Writer: func(w io.Writer) quad.WriteCloser { return NewEncoder(w) },
 	})
 }
 
@@ -181,3 +182,35 @@ func unEscape(r []rune, spec int, isQuoted, isEscaped bool) quad.Value {
 	}
 	return quad.Raw(raw)
 }
+
+// NewEncoder returns an N-Quad encoder that writes its output to the
+// provided io.Writer.
+func NewEncoder(w io.Writer) *Encoder { return &Encoder{w: w} }
+
+// Encoder implements N-Quad document generator according to the RDF
+// 1.1 N-Quads specification.
+type Encoder struct {
+	w   io.Writer
+	err error
+}
+
+func (enc *Encoder) writeValue(s string) {
+	if enc.err != nil {
+		return
+	}
+	_, enc.err = enc.w.Write([]byte(s + " "))
+}
+func (enc *Encoder) WriteQuad(q quad.Quad) error {
+	enc.writeValue(quad.StringOf(q.Subject))
+	enc.writeValue(quad.StringOf(q.Predicate))
+	enc.writeValue(quad.StringOf(q.Object))
+	if q.Label != nil {
+		enc.writeValue(quad.StringOf(q.Label))
+	}
+	if enc.err != nil {
+		return enc.err
+	}
+	_, enc.err = enc.w.Write([]byte(".\n"))
+	return enc.err
+}
+func (enc *Encoder) Close() error { return enc.err }
