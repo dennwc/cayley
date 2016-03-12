@@ -1,75 +1,53 @@
 package turtle
 
-import "strings"
+import (
+	"bytes"
+	"fmt"
+	"strconv"
+	"strings"
+)
 
-func ParseTerm(s string) Term {
-	if len(s) <= 2 {
-		return Raw(s)
-	}
-	// TODO(dennwc): parse for real
-	if s[0] == '<' && s[len(s)-1] == '>' {
-		return IRI(s[1 : len(s)-1])
-	} else if s[0] == '"' {
-		if s[len(s)-1] == '"' {
-			return Literal{
-				Value: Unescape(s[1 : len(s)-1]),
-			}
-		} else if i := strings.Index(s, `"^^<`); s[len(s)-1] == '>' && i > 0 {
-			return Literal{
-				Value:    Unescape(s[1:i]),
-				DataType: IRI(s[i+4 : len(s)-1]),
-			}
-		} else if i = strings.Index(s, `"@`); i > 0 {
-			return Literal{
-				Value:    Unescape(s[1:i]),
-				Language: s[i+2:],
-			}
-		}
-		return Raw(s)
-	} else if strings.Index(s, "_:") == 0 {
-		return BlankNode(s[2:])
-	}
-	return Raw(s)
-}
+//go:generate ragel -Z -G2 parse.rl
+
+var ErrInvalid = fmt.Errorf("invalid turtle value")
 
 type Term interface {
 	String() string
 }
 
-type Literal struct {
-	Value    string
-	Language string
-	DataType IRI
+type String string
+
+func (v String) String() string {
+	return `"` + Escape(string(v)) + `"`
 }
 
-func (v Literal) String() string {
-	if v.Value == "" {
-		return ""
-	}
-	s := `"` + Escape(v.Value) + `"`
-	if v.Language != "" {
-		s += "@" + v.Language
-	} else if v.DataType != "" {
-		s += "^^" + v.DataType.String()
-	}
-	return s
+type LangString struct {
+	Value String
+	Lang  string
+}
+
+func (v LangString) String() string {
+	return v.Value.String() + "@" + v.Lang
+}
+
+type TypedString struct {
+	Value String
+	Type  IRI
+}
+
+func (v TypedString) String() string {
+	return v.Value.String() + "^^" + v.Type.String()
 }
 
 type IRI string
 
 func (s IRI) String() string {
-	if s == "" {
-		return ""
-	}
 	return "<" + string(s) + ">"
 }
 
 type BlankNode string
 
 func (s BlankNode) String() string {
-	if s == "" {
-		return ""
-	}
 	return "_:" + string(s)
 }
 
@@ -77,21 +55,12 @@ type Raw string
 
 func (s Raw) String() string { return string(s) }
 
-var (
-	escaper = strings.NewReplacer(
-		"\\", "\\\\",
-		"\"", "\\\"",
-		"\n", "\\n",
-		"\r", "\\r",
-		"\t", "\\t",
-	)
-	unescaper = strings.NewReplacer(
-		"\\\\", "\\",
-		"\\\"", "\"",
-		"\\n", "\n",
-		"\\r", "\r",
-		"\\t", "\t",
-	)
+var escaper = strings.NewReplacer(
+	"\\", "\\\\",
+	"\"", "\\\"",
+	"\n", "\\n",
+	"\r", "\\r",
+	"\t", "\\t",
 )
 
 func Escape(s string) string {
@@ -99,5 +68,56 @@ func Escape(s string) string {
 }
 
 func Unescape(s string) string {
-	return unescaper.Replace(s)
+	return unEscape([]rune(s))
+}
+
+func unEscape(r []rune) string {
+	buf := bytes.NewBuffer(make([]byte, 0, len(r)))
+
+	for i := 0; i < len(r); {
+		switch r[i] {
+		case '\\':
+			i++
+			var c byte
+			switch r[i] {
+			case 't':
+				c = '\t'
+			case 'b':
+				c = '\b'
+			case 'n':
+				c = '\n'
+			case 'r':
+				c = '\r'
+			case 'f':
+				c = '\f'
+			case '"':
+				c = '"'
+			case '\'':
+				c = '\''
+			case '\\':
+				c = '\\'
+			case 'u':
+				rc, err := strconv.ParseInt(string(r[i+1:i+5]), 16, 32)
+				if err != nil {
+					panic(fmt.Errorf("internal parser error: %v", err))
+				}
+				buf.WriteRune(rune(rc))
+				i += 5
+				continue
+			case 'U':
+				rc, err := strconv.ParseInt(string(r[i+1:i+9]), 16, 32)
+				if err != nil {
+					panic(fmt.Errorf("internal parser error: %v", err))
+				}
+				buf.WriteRune(rune(rc))
+				i += 9
+				continue
+			}
+			buf.WriteByte(c)
+		default:
+			buf.WriteRune(r[i])
+		}
+		i++
+	}
+	return buf.String()
 }

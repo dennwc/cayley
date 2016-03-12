@@ -177,30 +177,34 @@ func toTerm(qv quad.Value) gojsonld.Term {
 			gojsonld.NewResource(gojsonld.XSD_STRING),
 		)
 	}
-	t := turtle.ParseTerm(quad.StringOf(qv))
+	t, err := turtle.Parse(quad.StringOf(qv))
+	if err != nil {
+		return gojsonld.NewLiteralWithDatatype(
+			string(quad.StringOf(qv)),
+			gojsonld.NewResource(gojsonld.XSD_STRING),
+		)
+	}
 	switch v := t.(type) {
 	case turtle.IRI:
 		return gojsonld.NewResource(string(v))
 	case turtle.BlankNode:
 		return gojsonld.NewBlankNode(string(v))
-	case turtle.Literal:
-		if v.Language != "" {
-			return gojsonld.NewLiteralWithLanguageAndDatatype(
-				v.Value,
-				v.Language,
-				gojsonld.NewResource(gojsonld.XSD_STRING),
-			)
-		} else if v.DataType != "" {
-			return gojsonld.NewLiteralWithDatatype(
-				v.Value,
-				gojsonld.NewResource(string(v.DataType)),
-			)
-		} else {
-			return gojsonld.NewLiteralWithDatatype(
-				v.Value,
-				gojsonld.NewResource(gojsonld.XSD_STRING),
-			)
-		}
+	case turtle.String:
+		return gojsonld.NewLiteralWithDatatype(
+			string(v),
+			gojsonld.NewResource(gojsonld.XSD_STRING),
+		)
+	case turtle.LangString:
+		return gojsonld.NewLiteralWithLanguageAndDatatype(
+			string(v.Value),
+			v.Lang,
+			gojsonld.NewResource(gojsonld.XSD_STRING),
+		)
+	case turtle.TypedString:
+		return gojsonld.NewLiteralWithDatatype(
+			string(v.Value),
+			gojsonld.NewResource(string(v.Type)),
+		)
 	default:
 		return gojsonld.NewLiteralWithDatatype(quad.StringOf(qv), gojsonld.NewResource(gojsonld.XSD_STRING))
 	}

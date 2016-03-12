@@ -2,12 +2,38 @@ package quad
 
 import (
 	"crypto/sha1"
+	"github.com/google/cayley/quad/turtle"
 	"hash"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
+
+func FromTerm(t turtle.Term) Value {
+	if t == nil {
+		return nil
+	}
+	switch v := t.(type) {
+	case turtle.IRI:
+		return IRI(v)
+	case turtle.BlankNode:
+		return BNode(v)
+	case turtle.String:
+		return String(v)
+	case turtle.LangString:
+		return LangString{
+			Value: String(v.Value),
+			Lang:  v.Lang,
+		}
+	case turtle.TypedString:
+		return TypedString{
+			Value: String(v.Value),
+			Type:  IRI(v.Type),
+		}
+	default:
+		return Raw(t.String())
+	}
+}
 
 // Value is a type used by all quad directions.
 type Value interface {
@@ -60,21 +86,19 @@ func StringOf(v Value) string {
 type Raw string
 
 func (s Raw) String() string { return string(s) }
+func (s Raw) Parse() (Value, error) {
+	t, err := turtle.Parse(string(s))
+	if err != nil {
+		return nil, err
+	}
+	return FromTerm(t), nil
+}
 
 // String is an RDF string value (ex: "name").
 type String string
 
-var escaper = strings.NewReplacer(
-	"\\", "\\\\",
-	"\"", "\\\"",
-	"\n", "\\n",
-	"\r", "\\r",
-	"\t", "\\t",
-)
-
 func (s String) String() string {
-	//TODO(barakmich): Proper escaping.
-	return `"` + escaper.Replace(string(s)) + `"`
+	return turtle.String(s).String()
 }
 
 // TypedString is an RDF value with type (ex: "name"^^<type>).
