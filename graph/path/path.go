@@ -70,31 +70,13 @@ type Path struct {
 // IsMorphism returns whether this Path is a morphism.
 func (p *Path) IsMorphism() bool { return p.qs == nil }
 
-func toRawValues(nodes []string) []quad.Value {
-	arr := make([]quad.Value, len(nodes))
-	for i, v := range nodes {
-		arr[i] = quad.Raw(v)
-	}
-	return arr
-}
-
 // StartMorphism creates a new Path with no underlying QuadStore.
-func StartMorphism(nodes ...string) *Path {
-	return StartMorphismV(toRawValues(nodes)...)
-}
-
-// StartMorphismV creates a new Path with no underlying QuadStore.
-func StartMorphismV(nodes ...quad.Value) *Path {
-	return StartPathV(nil, nodes...)
+func StartMorphism(nodes ...quad.Value) *Path {
+	return StartPath(nil, nodes...)
 }
 
 // StartPath creates a new Path from a set of nodes and an underlying QuadStore.
-func StartPath(qs graph.QuadStore, nodes ...string) *Path {
-	return StartPathV(qs, toRawValues(nodes)...)
-}
-
-// StartPathV creates a new Path from a set of nodes and an underlying QuadStore.
-func StartPathV(qs graph.QuadStore, nodes ...quad.Value) *Path {
+func StartPath(qs graph.QuadStore, nodes ...quad.Value) *Path {
 	return &Path{
 		stack: []morphism{
 			isMorphism(nodes...),
@@ -133,13 +115,7 @@ func (p *Path) Reverse() *Path {
 
 // Is declares that the current nodes in this path are only the nodes
 // passed as arguments.
-func (p *Path) Is(nodes ...string) *Path {
-	return p.IsV(toRawValues(nodes)...)
-}
-
-// IsV declares that the current nodes in this path are only the nodes
-// passed as arguments.
-func (p *Path) IsV(nodes ...quad.Value) *Path {
+func (p *Path) Is(nodes ...quad.Value) *Path {
 	p.stack = append(p.stack, isMorphism(nodes...))
 	return p
 }
@@ -293,13 +269,7 @@ func (p *Path) SaveReverse(via interface{}, tag string) *Path {
 
 // Has limits the paths to be ones where the current nodes have some linkage
 // to some known node.
-func (p *Path) Has(via interface{}, nodes ...string) *Path {
-	return p.HasV(via, toRawValues(nodes)...)
-}
-
-// HasV limits the paths to be ones where the current nodes have some linkage
-// to some known node.
-func (p *Path) HasV(via interface{}, nodes ...quad.Value) *Path {
+func (p *Path) Has(via interface{}, nodes ...quad.Value) *Path {
 	p.stack = append(p.stack, hasMorphism(via, nodes...))
 	return p
 }
