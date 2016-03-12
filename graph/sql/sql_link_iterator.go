@@ -37,7 +37,7 @@ func newTableName() string {
 
 type constraint struct {
 	dir  quad.Direction
-	vals []string
+	vals []quad.Value
 }
 
 type tagDir struct {
@@ -172,12 +172,12 @@ func (l *SQLLinkIterator) quickContains(v graph.Value) (bool, bool) {
 }
 
 func (l *SQLLinkIterator) buildResult(result []string, cols []string) map[string]string {
-	var q quad.Quad
-	q.Subject = result[0]
-	q.Predicate = result[1]
-	q.Object = result[2]
-	q.Label = result[3]
-	l.resultQuad = q
+	l.resultQuad = quad.Quad{
+		Subject:   unmarshalValue([]byte(result[0])),
+		Predicate: unmarshalValue([]byte(result[1])),
+		Object:    unmarshalValue([]byte(result[2])),
+		Label:     unmarshalValue([]byte(result[3])),
+	}
 	m := make(map[string]string)
 	for i, c := range cols[4:] {
 		m[c] = result[i+4]

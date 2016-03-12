@@ -39,7 +39,7 @@ func join(qs graph.QuadStore, its ...graph.Iterator) graph.Iterator {
 
 // isMorphism represents all nodes passed in-- if there are none, this function
 // acts as a passthrough for the previous iterator.
-func isMorphism(nodes ...string) morphism {
+func isMorphism(nodes ...quad.Value) morphism {
 	return morphism{
 		Name:     "is",
 		Reversal: func(ctx *context) (morphism, *context) { return isMorphism(nodes...), ctx },
@@ -65,7 +65,7 @@ func isMorphism(nodes ...string) morphism {
 
 // hasMorphism is the set of nodes that is reachable via either a *Path, a
 // single node.(string) or a list of nodes.([]string).
-func hasMorphism(via interface{}, nodes ...string) morphism {
+func hasMorphism(via interface{}, nodes ...quad.Value) morphism {
 	return morphism{
 		Name:     "has",
 		Reversal: func(ctx *context) (morphism, *context) { return hasMorphism(via, nodes...), ctx },
@@ -408,19 +408,24 @@ func buildViaPath(qs graph.QuadStore, via ...interface{}) *Path {
 				return newp
 			}
 			return p
+		case quad.Value:
+			return StartPathV(qs, p)
 		case string:
 			return StartPath(qs, p)
 		default:
 			panic(fmt.Sprintln("Invalid type passed to buildViaPath.", reflect.TypeOf(v), p))
 		}
 	}
-	var strings []string
+	var nodes []quad.Value
 	for _, s := range via {
-		if str, ok := s.(string); ok {
-			strings = append(strings, str)
-		} else {
-			panic("Non-string type passed to long Via path")
+		switch v := s.(type) {
+		case quad.Value:
+			nodes = append(nodes, v)
+		case string:
+			nodes = append(nodes, quad.Raw(v))
+		default:
+			panic("Non-value type passed to long Via path")
 		}
 	}
-	return StartPath(qs, strings...)
+	return StartPathV(qs, nodes...)
 }

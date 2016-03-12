@@ -21,6 +21,7 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"github.com/google/cayley/graph/proto"
 	"github.com/google/cayley/quad"
 )
 
@@ -58,7 +59,7 @@ func (it *AllIterator) makeCursor() {
 				UNION
 				SELECT object FROM quads
 				UNION
-				SELECT label FROM quads
+				SELECT label FROM quads WHERE label <> ''
 			) AS DistinctNodes (node) WHERE node IS NOT NULL;`)
 		if err != nil {
 			glog.Errorln("Couldn't get cursor from SQL database: %v", err)
@@ -146,18 +147,30 @@ func (it *AllIterator) Next() bool {
 		return false
 	}
 	if it.table == "nodes" {
-		var node string
+		var node []byte
 		err := it.cursor.Scan(&node)
 		if err != nil {
 			glog.Errorf("Error nexting node iterator: %v", err)
 			it.err = err
 			return false
 		}
-		it.result = node
+		v, err := proto.UnmarshalValue(node)
+		if err != nil {
+			glog.Errorf("Error nexting node iterator: %v", err)
+			it.err = err
+			return false
+		}
+		it.result = v
 		return true
 	}
-	var q quad.Quad
-	err := it.cursor.Scan(&q.Subject, &q.Predicate, &q.Object, &q.Label)
+	var s, p, o, l []byte
+	err := it.cursor.Scan(&s, &p, &o, &l)
+	if err != nil {
+		glog.Errorf("Error scanning sql iterator: %v", err)
+		it.err = err
+		return false
+	}
+	q, err := unmarshalQuadDirections(s, p, o, l)
 	if err != nil {
 		glog.Errorf("Error scanning sql iterator: %v", err)
 		it.err = err

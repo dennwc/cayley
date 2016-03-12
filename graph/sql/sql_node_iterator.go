@@ -49,9 +49,9 @@ type SQLNodeIterator struct {
 	linkIt   sqlItDir
 	size     int64
 	tagger   graph.Tagger
-	fixedSet []string
+	fixedSet []quad.Value
 
-	result string
+	result quad.Value
 }
 
 func (n *SQLNodeIterator) sqlClone() sqlIterator {
@@ -62,7 +62,7 @@ func (n *SQLNodeIterator) sqlClone() sqlIterator {
 			dir: n.linkIt.dir,
 			it:  n.linkIt.it.sqlClone(),
 		},
-		fixedSet: make([]string, len(n.fixedSet)),
+		fixedSet: make([]quad.Value, len(n.fixedSet)),
 	}
 	m.tagger.CopyFromTagger(n.Tagger())
 	copy(m.fixedSet, n.fixedSet)
@@ -97,7 +97,7 @@ func (n *SQLNodeIterator) buildResult(result []string, cols []string) map[string
 			continue
 		}
 		if c == "__execd" {
-			n.result = result[i]
+			n.result = unmarshalValue([]byte(result[i]))
 		}
 		m[c] = result[i]
 	}
@@ -198,7 +198,7 @@ func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, []string
 	values = append(values, wherevalues...)
 
 	if !next {
-		v := val.(string)
+		v := val.(quad.Value)
 		if constraint != "" {
 			constraint += " AND "
 		}

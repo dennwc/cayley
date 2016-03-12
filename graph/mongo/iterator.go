@@ -33,7 +33,7 @@ type Iterator struct {
 	dir        quad.Direction
 	iter       *mgo.Iter
 	hash       string
-	name       string
+	name       quad.Value
 	size       int64
 	isAll      bool
 	constraint bson.M
@@ -45,7 +45,7 @@ type Iterator struct {
 func NewIterator(qs *QuadStore, collection string, d quad.Direction, val graph.Value) *Iterator {
 	name := qs.NameOf(val)
 
-	constraint := bson.M{d.String(): name}
+	constraint := bson.M{d.String(): toMongoValue(name)}
 
 	return &Iterator{
 		uid:        iterator.NextUID(),
@@ -177,13 +177,13 @@ func (it *Iterator) Contains(v graph.Value) bool {
 	case quad.Subject:
 		offset = 0
 	case quad.Predicate:
-		offset = (hashSize * 2)
+		offset = (quad.HashSize * 2)
 	case quad.Object:
-		offset = (hashSize * 2) * 2
+		offset = (quad.HashSize * 2) * 2
 	case quad.Label:
-		offset = (hashSize * 2) * 3
+		offset = (quad.HashSize * 2) * 3
 	}
-	val := v.(string)[offset : hashSize*2+offset]
+	val := v.(string)[offset : quad.HashSize*2+offset]
 	if val == it.hash {
 		it.result = v
 		return graph.ContainsLogOut(it, v, true)

@@ -1,19 +1,16 @@
 package sql
 
 import (
-	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"hash"
-	"sync"
 
 	"github.com/lib/pq"
 
 	"github.com/barakmich/glog"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"github.com/google/cayley/graph/proto"
 	"github.com/google/cayley/quad"
 )
 
@@ -28,13 +25,6 @@ func init() {
 		IsPersistent:      true,
 	})
 }
-
-var (
-	hashPool = sync.Pool{
-		New: func() interface{} { return sha1.New() },
-	}
-	hashSize = sha1.Size
-)
 
 type QuadStore struct {
 	db           *sql.DB
@@ -76,10 +66,10 @@ func createSQLTables(addr string, options graph.Options) error {
 
 	quadTable, err := tx.Exec(`
 	CREATE TABLE quads (
-		subject TEXT NOT NULL,
-		predicate TEXT NOT NULL,
-		object TEXT NOT NULL,
-		label TEXT,
+		subject BYTEA NOT NULL,
+		predicate BYTEA NOT NULL,
+		object BYTEA NOT NULL,
+		label BYTEA,
 		horizon BIGSERIAL PRIMARY KEY,
 		id BIGINT,
 		ts timestamp,
@@ -148,27 +138,88 @@ func newQuadStore(addr string, options graph.Options) (graph.QuadStore, error) {
 	return &qs, nil
 }
 
-func hashOf(s string) string {
-	h := hashPool.Get().(hash.Hash)
-	h.Reset()
-	defer hashPool.Put(h)
-	key := make([]byte, 0, hashSize)
-	h.Write([]byte(s))
-	key = h.Sum(key)
-	return hex.EncodeToString(key)
+func hashOf(s quad.Value) string {
+	return hex.EncodeToString(quad.HashOf(s))
 }
 
-func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta) error {
+func convInsertError(err error) error {
+	if err == nil {
+		return err
+	}
+	if pe, ok := err.(*pq.Error); ok {
+		if pe.Code == "23505" {
+			return graph.ErrQuadExists
+		}
+	}
+	return err
+}
+
+func marshalQuadDirections(q quad.Quad) (s, p, o, l []byte, err error) {
+	s, err = proto.MarshalValue(q.Subject)
+	if err != nil {
+		return
+	}
+	p, err = proto.MarshalValue(q.Predicate)
+	if err != nil {
+		return
+	}
+	o, err = proto.MarshalValue(q.Object)
+	if err != nil {
+		return
+	}
+	l, err = proto.MarshalValue(q.Label)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func unmarshalQuadDirections(s, p, o, l []byte) (q quad.Quad, err error) {
+	q.Subject, err = proto.UnmarshalValue(s)
+	if err != nil {
+		return
+	}
+	q.Predicate, err = proto.UnmarshalValue(p)
+	if err != nil {
+		return
+	}
+	q.Object, err = proto.UnmarshalValue(o)
+	if err != nil {
+		return
+	}
+	q.Label, err = proto.UnmarshalValue(l)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func unmarshalValue(data []byte) quad.Value {
+	v, err := proto.UnmarshalValue(data)
+	if err != nil {
+		glog.Errorf("couldn't unmarshal value: %v", err)
+		return nil
+	}
+	return v
+}
+
+func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpts) error {
 	stmt, err := tx.Prepare(pq.CopyIn("quads", "subject", "predicate", "object", "label", "id", "ts", "subject_hash", "predicate_hash", "object_hash", "label_hash"))
 	if err != nil {
+		glog.Errorf("couldn't prepare COPY statement: %v", err)
 		return err
 	}
 	for _, d := range in {
-		_, err := stmt.Exec(
-			d.Quad.Subject,
-			d.Quad.Predicate,
-			d.Quad.Object,
-			d.Quad.Label,
+		s, p, o, l, err := marshalQuadDirections(d.Quad)
+		if err != nil {
+			glog.Errorf("couldn't marshal quads: %v", err)
+			return err
+		}
+		_, err = stmt.Exec(
+			s,
+			p,
+			o,
+			l,
 			d.ID.Int(),
 			d.Timestamp,
 			hashOf(d.Quad.Subject),
@@ -177,15 +228,21 @@ func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta) error {
 			hashOf(d.Quad.Label),
 		)
 		if err != nil {
-			glog.Errorf("couldn't prepare COPY statement: %v", err)
+			err = convInsertError(err)
+			glog.Errorf("couldn't execute COPY statement: %v", err)
 			return err
 		}
 	}
-	_, err = stmt.Exec()
-	if err != nil {
+	//if _, err = stmt.Exec(); err != nil {
+	//	glog.Errorf("couldn't execute COPY statement 2: %v", err)
+	//	return err
+	//}
+	if err = stmt.Close(); err != nil {
+		glog.Errorf("couldn't close COPY statement: %v", err)
+		err = convInsertError(err)
 		return err
 	}
-	return stmt.Close()
+	return nil
 }
 
 func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpts) error {
@@ -195,18 +252,27 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 			allAdds = false
 		}
 	}
-	if allAdds {
-		return qs.copyFrom(tx, in)
+	if allAdds && !opts.IgnoreDup {
+		return qs.copyFrom(tx, in, opts)
 	}
 
 	for _, d := range in {
 		switch d.Action {
 		case graph.Add:
-			_, err := tx.Exec(`INSERT INTO quads(subject, predicate, object, label, id, ts, subject_hash, predicate_hash, object_hash, label_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);`,
-				d.Quad.Subject,
-				d.Quad.Predicate,
-				d.Quad.Object,
-				d.Quad.Label,
+			end := ";"
+			if opts.IgnoreDup {
+				end = " ON CONFLICT DO NOTHING;"
+			}
+			s, p, o, l, err := marshalQuadDirections(d.Quad)
+			if err != nil {
+				glog.Errorf("couldn't marshal quads: %v", err)
+				return err
+			}
+			_, err = tx.Exec(`INSERT INTO quads(subject, predicate, object, label, id, ts, subject_hash, predicate_hash, object_hash, label_hash) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`+end,
+				s,
+				p,
+				o,
+				l,
 				d.ID.Int(),
 				d.Timestamp,
 				hashOf(d.Quad.Subject),
@@ -214,6 +280,7 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				hashOf(d.Quad.Object),
 				hashOf(d.Quad.Label),
 			)
+			err = convInsertError(err)
 			if err != nil {
 				glog.Errorf("couldn't exec INSERT statement: %v", err)
 				return err
@@ -231,17 +298,17 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				return err
 			}
 			if affected != 1 && !opts.IgnoreMissing {
-				return errors.New("deleting non-existent triple; rolling back")
+				return graph.ErrQuadNotExist
 			}
 		default:
 			panic("unknown action")
 		}
 	}
+	qs.size = -1 // TODO(barakmich): Sync size with writes.
 	return nil
 }
 
 func (qs *QuadStore) ApplyDeltas(in []graph.Delta, opts graph.IgnoreOpts) error {
-	// TODO(barakmich): Support more ignoreOpts? "ON CONFLICT IGNORE"
 	tx, err := qs.db.Begin()
 	if err != nil {
 		glog.Errorf("couldn't begin write transaction: %v", err)
@@ -265,7 +332,7 @@ func (qs *QuadStore) Quad(val graph.Value) quad.Quad {
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Iterator {
-	return NewSQLLinkIterator(qs, d, val.(string))
+	return NewSQLLinkIterator(qs, d, val.(quad.Value))
 }
 
 func (qs *QuadStore) NodesAllIterator() graph.Iterator {
@@ -276,20 +343,19 @@ func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
 	return NewAllIterator(qs, "quads")
 }
 
-func (qs *QuadStore) ValueOf(s string) graph.Value {
+func (qs *QuadStore) ValueOf(s quad.Value) graph.Value {
 	return s
 }
 
-func (qs *QuadStore) NameOf(v graph.Value) string {
+func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 	if v == nil {
 		glog.V(2).Info("NameOf was nil")
-		return ""
+		return nil
 	}
-	return v.(string)
+	return v.(quad.Value)
 }
 
 func (qs *QuadStore) Size() int64 {
-	// TODO(barakmich): Sync size with writes.
 	if qs.size != -1 {
 		return qs.size
 	}
@@ -342,7 +408,7 @@ func (qs *QuadStore) Type() string {
 	return QuadStoreType
 }
 
-func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, val string) int64 {
+func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, val quad.Value) int64 {
 	var err error
 	if isAll {
 		return qs.Size()
@@ -353,7 +419,7 @@ func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, val string)
 		}
 		return (qs.Size() / 1000) + 1
 	}
-	if val, ok := qs.lru.Get(val + string(dir.Prefix())); ok {
+	if val, ok := qs.lru.Get(val.String() + string(dir.Prefix())); ok {
 		return val
 	}
 	var size int64
@@ -364,6 +430,6 @@ func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, val string)
 		glog.Errorln("Error getting size from SQL database: %v", err)
 		return 0
 	}
-	qs.lru.Put(val+string(dir.Prefix()), size)
+	qs.lru.Put(val.String()+string(dir.Prefix()), size)
 	return size
 }
