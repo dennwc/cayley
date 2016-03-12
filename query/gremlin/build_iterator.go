@@ -24,6 +24,7 @@ import (
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
 	"github.com/google/cayley/graph/path"
+	"github.com/google/cayley/quad"
 )
 
 func propertiesOf(obj *otto.Object, name string) []string {
@@ -64,6 +65,14 @@ func getFirstArgAsMorphismChain(obj *otto.Object) *otto.Object {
 	return firstArg.Object()
 }
 
+func toRawValues(str []string) []quad.Value {
+	values := make([]quad.Value, 0, len(str))
+	for _, s := range str {
+		values = append(values, quad.Raw(s))
+	}
+	return values
+}
+
 func buildPathFromObject(obj *otto.Object) *path.Path {
 	var p *path.Path
 	val, _ := obj.Get("_gremlin_type")
@@ -72,7 +81,7 @@ func buildPathFromObject(obj *otto.Object) *path.Path {
 	if prev, _ := obj.Get("_gremlin_prev"); !prev.IsObject() {
 		switch gremlinType {
 		case "vertex":
-			return path.StartMorphism(stringArgs...)
+			return path.StartMorphism(toRawValues(stringArgs)...)
 		case "morphism":
 			return path.StartMorphism()
 		default:
@@ -86,7 +95,7 @@ func buildPathFromObject(obj *otto.Object) *path.Path {
 	}
 	switch gremlinType {
 	case "Is":
-		return p.Is(stringArgs...)
+		return p.Is(toRawValues(stringArgs)...)
 	case "In":
 		preds, tags, ok := getViaData(obj)
 		if !ok {
@@ -140,7 +149,7 @@ func buildPathFromObject(obj *otto.Object) *path.Path {
 		if len(stringArgs) < 2 {
 			return nil
 		}
-		return p.Has(stringArgs[0], stringArgs[1:]...)
+		return p.Has(stringArgs[0], toRawValues(stringArgs[1:])...)
 	case "Save", "SaveR":
 		if len(stringArgs) > 2 || len(stringArgs) == 0 {
 			return nil

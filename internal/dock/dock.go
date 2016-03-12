@@ -55,7 +55,7 @@ func Run(t testing.TB, conf Config) (addr string, closer func()) {
 func RunAndWait(t testing.TB, conf Config, check func(string) bool) (addr string, closer func()) {
 	addr, closer = Run(t, conf)
 	ok := false
-	for i := 0; i < 5 && !ok; i++ {
+	for i := 0; i < 10 && !ok; i++ {
 		ok = check(addr)
 		if !ok {
 			time.Sleep(time.Second * 2)
