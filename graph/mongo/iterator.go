@@ -15,8 +15,6 @@
 package mongo
 
 import (
-	"fmt"
-
 	"github.com/barakmich/glog"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
@@ -32,8 +30,7 @@ type Iterator struct {
 	qs         *QuadStore
 	dir        quad.Direction
 	iter       *mgo.Iter
-	hash       string
-	name       quad.Value
+	hash       NodeHash
 	size       int64
 	isAll      bool
 	constraint bson.M
@@ -43,20 +40,19 @@ type Iterator struct {
 }
 
 func NewIterator(qs *QuadStore, collection string, d quad.Direction, val graph.Value) *Iterator {
-	name := qs.NameOf(val)
+	h := val.(NodeHash)
 
-	constraint := bson.M{d.String(): toMongoValue(name)}
+	constraint := bson.M{d.String(): string(h)}
 
 	return &Iterator{
 		uid:        iterator.NextUID(),
-		name:       name,
 		constraint: constraint,
 		collection: collection,
 		qs:         qs,
 		dir:        d,
 		iter:       nil,
 		size:       -1,
-		hash:       val.(string),
+		hash:       h,
 		isAll:      false,
 	}
 }
@@ -118,7 +114,7 @@ func (it *Iterator) Clone() graph.Iterator {
 	if it.isAll {
 		m = NewAllIterator(it.qs, it.collection)
 	} else {
-		m = NewIterator(it.qs, it.collection, it.dir, it.hash)
+		m = NewIterator(it.qs, it.collection, it.dir, NodeHash(it.hash))
 	}
 	m.tags.CopyFrom(it)
 	return m
@@ -145,7 +141,11 @@ func (it *Iterator) Next() bool {
 	if it.collection == "quads" && len(result.Added) <= len(result.Deleted) {
 		return it.Next()
 	}
-	it.result = result.ID
+	if it.collection == "quads" {
+		it.result = QuadHash(result.ID)
+	} else {
+		it.result = NodeHash(result.ID)
+	}
 	return true
 }
 
@@ -172,18 +172,7 @@ func (it *Iterator) Contains(v graph.Value) bool {
 		it.result = v
 		return graph.ContainsLogOut(it, v, true)
 	}
-	var offset int
-	switch it.dir {
-	case quad.Subject:
-		offset = 0
-	case quad.Predicate:
-		offset = (quad.HashSize * 2)
-	case quad.Object:
-		offset = (quad.HashSize * 2) * 2
-	case quad.Label:
-		offset = (quad.HashSize * 2) * 3
-	}
-	val := v.(string)[offset : quad.HashSize*2+offset]
+	val := NodeHash(v.(QuadHash).Get(it.dir))
 	if val == it.hash {
 		it.result = v
 		return graph.ContainsLogOut(it, v, true)
@@ -224,7 +213,7 @@ func (it *Iterator) Describe() graph.Description {
 	size, _ := it.Size()
 	return graph.Description{
 		UID:  it.UID(),
-		Name: fmt.Sprintf("%s/%s", it.name, it.hash),
+		Name: string(it.hash),
 		Type: it.Type(),
 		Size: size,
 	}
