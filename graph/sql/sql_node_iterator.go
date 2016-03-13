@@ -19,9 +19,11 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"database/sql"
 	"github.com/barakmich/glog"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
+	"log"
 )
 
 var sqlNodeTableID uint64
@@ -51,7 +53,7 @@ type SQLNodeIterator struct {
 	tagger   graph.Tagger
 	fixedSet []quad.Value
 
-	result quad.Value
+	result graph.Value
 }
 
 func (n *SQLNodeIterator) sqlClone() sqlIterator {
@@ -74,7 +76,7 @@ func (n *SQLNodeIterator) Tagger() *graph.Tagger {
 }
 
 func (n *SQLNodeIterator) Result() graph.Value {
-	return Node{n.result}
+	return n.result
 }
 
 func (n *SQLNodeIterator) Type() sqlQueryType {
@@ -90,16 +92,16 @@ func (n *SQLNodeIterator) Describe() string {
 	return fmt.Sprintf("SQL_NODE_QUERY: %s", s)
 }
 
-func (n *SQLNodeIterator) buildResult(result []string, cols []string) map[string]string {
-	m := make(map[string]string)
+func (n *SQLNodeIterator) buildResult(result []sql.NullString, cols []string) map[string]graph.Value {
+	m := make(map[string]graph.Value)
 	for i, c := range cols {
 		if strings.HasSuffix(c, "_hash") {
 			continue
 		}
 		if c == "__execd" {
-			n.result = unmarshalValue([]byte(result[i]))
+			n.result = NodeHash(result[i])
 		}
-		m[c] = result[i]
+		m[c] = NodeHash(result[i])
 	}
 	return m
 }
@@ -152,9 +154,9 @@ func (n *SQLNodeIterator) getTags() []tagDir {
 	return out
 }
 
-func (n *SQLNodeIterator) buildWhere() (string, []string) {
+func (n *SQLNodeIterator) buildWhere() (string, sqlArgs) {
 	var q []string
-	var vals []string
+	var vals sqlArgs
 	if n.linkIt.it != nil {
 		s, v := n.linkIt.it.buildWhere()
 		q = append(q, s)
@@ -173,7 +175,7 @@ func (n *SQLNodeIterator) buildWhere() (string, []string) {
 	return query, vals
 }
 
-func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, []string) {
+func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, sqlArgs) {
 	topData := n.tableID()
 	tags := []tagDir{topData}
 	tags = append(tags, n.getTags()...)
@@ -186,7 +188,7 @@ func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, []string
 	query += strings.Join(t, ", ")
 	query += " FROM "
 	t = []string{}
-	var values []string
+	var values sqlArgs
 	for _, k := range n.getTables() {
 		values = append(values, k.values...)
 		t = append(t, fmt.Sprintf("%s as %s", k.table, k.name))
@@ -216,10 +218,11 @@ func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, []string
 		}
 		glog.V(4).Infoln(dstr)
 	}
+	log.Println(query)
 	return query, values
 }
 
-func (n *SQLNodeIterator) sameTopResult(target []string, test []string) bool {
+func (n *SQLNodeIterator) sameTopResult(target []sql.NullString, test []sql.NullString) bool {
 	return target[0] == test[0]
 }
 
