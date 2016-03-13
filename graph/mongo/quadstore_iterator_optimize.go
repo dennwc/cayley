@@ -67,8 +67,8 @@ func (qs *QuadStore) optimizeAndIterator(it *iterator.And) (graph.Iterator, bool
 
 	lset := []graph.Linkage{
 		{
-			Dir:    mongoIt.dir,
-			Value: qs.ValueOf(mongoIt.name),
+			Dir:   mongoIt.dir,
+			Value: mongoIt.hash,
 		},
 	}
 
