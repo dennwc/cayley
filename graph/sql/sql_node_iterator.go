@@ -23,7 +23,6 @@ import (
 	"github.com/barakmich/glog"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
-	"log"
 )
 
 var sqlNodeTableID uint64
@@ -200,12 +199,12 @@ func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, sqlArgs)
 	values = append(values, wherevalues...)
 
 	if !next {
-		v := val.(quad.Value)
+		v := val.(NodeHash)
 		if constraint != "" {
 			constraint += " AND "
 		}
 		constraint += fmt.Sprintf("%s.%s_hash = ?", topData.table, topData.dir)
-		values = append(values, hashOf(v))
+		values = append(values, sql.NullString(v))
 	}
 
 	query += constraint
@@ -218,7 +217,6 @@ func (n *SQLNodeIterator) buildSQL(next bool, val graph.Value) (string, sqlArgs)
 		}
 		glog.V(4).Infoln(dstr)
 	}
-	log.Println(query)
 	return query, values
 }
 
