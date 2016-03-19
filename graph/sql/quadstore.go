@@ -244,18 +244,6 @@ func unmarshalQuadDirections(s, p, o, l []byte) (q quad.Quad, err error) {
 	return
 }
 
-func unmarshalValue(data sql.NullString) quad.Value {
-	if !data.Valid {
-		return nil
-	}
-	v, err := proto.UnmarshalValue([]byte(data.String))
-	if err != nil {
-		glog.Errorf("couldn't unmarshal value: %v", err)
-		return nil
-	}
-	return v
-}
-
 func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpts) error {
 	panic("broken")
 	stmt, err := tx.Prepare(pq.CopyIn("quads", "subject", "predicate", "object", "label", "id", "ts", "subject_hash", "predicate_hash", "object_hash", "label_hash"))
