@@ -442,16 +442,12 @@ func toQuadValue(v value) quad.Value {
 }
 
 func (qs *QuadStore) Quad(val graph.Value) quad.Quad {
-	var q mongoQuad
-	err := qs.db.C("quads").FindId(string(val.(QuadHash))).One(&q)
-	if err != nil {
-		glog.Errorf("Error: Couldn't retrieve quad %s %v", val, err)
-	}
+	h := val.(QuadHash)
 	return quad.Quad{
-		Subject:   qs.NameOf(NodeHash(q.Subject)),
-		Predicate: qs.NameOf(NodeHash(q.Predicate)),
-		Object:    qs.NameOf(NodeHash(q.Object)),
-		Label:     qs.NameOf(NodeHash(q.Label)),
+		Subject:   qs.NameOf(NodeHash(h.Get(quad.Subject))),
+		Predicate: qs.NameOf(NodeHash(h.Get(quad.Predicate))),
+		Object:    qs.NameOf(NodeHash(h.Get(quad.Object))),
+		Label:     qs.NameOf(NodeHash(h.Get(quad.Label))),
 	}
 }
 
