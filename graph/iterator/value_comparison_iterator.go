@@ -35,10 +35,10 @@ import (
 type Operator int
 
 const (
-	compareLT Operator = iota
-	compareLTE
-	compareGT
-	compareGTE
+	CompareLT Operator = iota
+	CompareLTE
+	CompareGT
+	CompareGTE
 	// Why no Equals? Because that's usually an AndIterator.
 )
 
@@ -67,6 +67,9 @@ func (it *Comparison) UID() uint64 {
 	return it.uid
 }
 
+func (it *Comparison) Value() quad.Value  { return it.val }
+func (it *Comparison) Operator() Operator { return it.op }
+
 // Here's the non-boilerplate part of the ValueComparison iterator. Given a value
 // and our operator, determine whether or not we meet the requirement.
 func (it *Comparison) doComparison(val graph.Value) bool {
@@ -78,24 +81,34 @@ func (it *Comparison) doComparison(val graph.Value) bool {
 		if cVal2, ok := qval.(quad.Int); ok {
 			return RunIntOp(cVal2, it.op, cVal)
 		}
-		return true
+		return false
 	case quad.Float:
 		if cVal2, ok := qval.(quad.Float); ok {
 			return RunFloatOp(cVal2, it.op, cVal)
 		}
-		return true
+		return false
 	case quad.String:
 		if cVal2, ok := qval.(quad.String); ok {
 			return RunStrOp(string(cVal2), it.op, string(cVal))
 		}
-		return true
+		return false
+	case quad.BNode:
+		if cVal2, ok := qval.(quad.BNode); ok {
+			return RunStrOp(string(cVal2), it.op, string(cVal))
+		}
+		return false
+	case quad.IRI:
+		if cVal2, ok := qval.(quad.IRI); ok {
+			return RunStrOp(string(cVal2), it.op, string(cVal))
+		}
+		return false
 	case quad.Time:
 		if cVal2, ok := qval.(quad.Time); ok {
 			return RunTimeOp(time.Time(cVal2), it.op, time.Time(cVal))
 		}
-		return true
+		return false
 	default:
-		return true
+		return RunStrOp(quad.StringOf(qval), it.op, quad.StringOf(it.val))
 	}
 }
 
@@ -105,13 +118,13 @@ func (it *Comparison) Close() error {
 
 func RunIntOp(a quad.Int, op Operator, b quad.Int) bool {
 	switch op {
-	case compareLT:
+	case CompareLT:
 		return a < b
-	case compareLTE:
+	case CompareLTE:
 		return a <= b
-	case compareGT:
+	case CompareGT:
 		return a > b
-	case compareGTE:
+	case CompareGTE:
 		return a >= b
 	default:
 		panic("Unknown operator type")
@@ -120,13 +133,13 @@ func RunIntOp(a quad.Int, op Operator, b quad.Int) bool {
 
 func RunFloatOp(a quad.Float, op Operator, b quad.Float) bool {
 	switch op {
-	case compareLT:
+	case CompareLT:
 		return a < b
-	case compareLTE:
+	case CompareLTE:
 		return a <= b
-	case compareGT:
+	case CompareGT:
 		return a > b
-	case compareGTE:
+	case CompareGTE:
 		return a >= b
 	default:
 		panic("Unknown operator type")
@@ -135,13 +148,13 @@ func RunFloatOp(a quad.Float, op Operator, b quad.Float) bool {
 
 func RunStrOp(a string, op Operator, b string) bool {
 	switch op {
-	case compareLT:
+	case CompareLT:
 		return a < b
-	case compareLTE:
+	case CompareLTE:
 		return a <= b
-	case compareGT:
+	case CompareGT:
 		return a > b
-	case compareGTE:
+	case CompareGTE:
 		return a >= b
 	default:
 		panic("Unknown operator type")
@@ -150,13 +163,13 @@ func RunStrOp(a string, op Operator, b string) bool {
 
 func RunTimeOp(a time.Time, op Operator, b time.Time) bool {
 	switch op {
-	case compareLT:
+	case CompareLT:
 		return a.Before(b)
-	case compareLTE:
+	case CompareLTE:
 		return !a.After(b)
-	case compareGT:
+	case CompareGT:
 		return a.After(b)
-	case compareGTE:
+	case CompareGTE:
 		return !a.Before(b)
 	default:
 		panic("Unknown operator type")
@@ -212,9 +225,8 @@ func (it *Comparison) NextPath() bool {
 	return true
 }
 
-// No subiterators.
 func (it *Comparison) SubIterators() []graph.Iterator {
-	return nil
+	return []graph.Iterator{it.subIt}
 }
 
 func (it *Comparison) Contains(val graph.Value) bool {

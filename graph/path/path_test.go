@@ -25,6 +25,7 @@ import (
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
 
+	"github.com/google/cayley/graph/iterator"
 	_ "github.com/google/cayley/graph/memstore"
 	_ "github.com/google/cayley/writer"
 )
@@ -148,6 +149,11 @@ func testSet(qs graph.QuadStore) []test {
 			message: "use in",
 			path:    StartPath(qs, vBob).In(vFollows),
 			expect:  []quad.Value{vAlice, vCharlie, vDani},
+		},
+		{
+			message: "use in with filter",
+			path:    StartPath(qs, vBob).In(vFollows).Filter(iterator.CompareGT, quad.IRI("c")),
+			expect:  []quad.Value{vCharlie, vDani},
 		},
 		{
 			message: "use path Out",

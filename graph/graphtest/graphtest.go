@@ -16,9 +16,13 @@ import (
 type DatabaseFunc func(t testing.TB) (graph.QuadStore, graph.Options, func())
 
 type Config struct {
-	UnTyped  bool // converts all values to Raw representation
-	NoHashes bool // cannot exchange raw values into typed ones
-	TimeInMs bool
+	UnTyped   bool // converts all values to Raw representation
+	NoHashes  bool // cannot exchange raw values into typed ones
+	TimeInMs  bool
+	TimeInMcs bool
+	TimeRound bool
+
+	OptimizesComparison bool
 
 	SkipDeletedFromIterator  bool
 	SkipSizeCheckAfterDelete bool
@@ -43,6 +47,9 @@ func TestAll(t testing.TB, gen DatabaseFunc, conf *Config) {
 	TestLoadTypedQuads(t, gen, conf)
 	TestAddRemove(t, gen, conf)
 	TestIteratorsAndNextResultOrderA(t, gen)
+	if !conf.UnTyped {
+		TestCompareTypedValues(t, gen, conf)
+	}
 }
 
 func MakeWriter(t testing.TB, qs graph.QuadStore, opts graph.Options, data ...quad.Quad) graph.QuadWriter {
@@ -108,6 +115,20 @@ func ExpectIteratedRawStrings(t testing.TB, qs graph.QuadStore, it graph.Iterato
 	require.Equal(t, exp, got)
 }
 
+func ExpectIteratedValues(t testing.TB, qs graph.QuadStore, it graph.Iterator, exp []quad.Value) {
+	//sort.Strings(exp)
+	got := IteratedValues(t, qs, it)
+	//sort.Strings(got)
+	require.Equal(t, len(exp), len(got), "%v\nvs\n%v", exp, got)
+	for i := range exp {
+		if eq, ok := exp[i].(quad.Equaler); ok {
+			require.True(t, eq.Equal(got[i]))
+		} else {
+			require.True(t, exp[i] == got[i])
+		}
+	}
+}
+
 func IteratedRawStrings(t testing.TB, qs graph.QuadStore, it graph.Iterator) []string {
 	var res []string
 	for graph.Next(it) {
@@ -115,6 +136,16 @@ func IteratedRawStrings(t testing.TB, qs graph.QuadStore, it graph.Iterator) []s
 	}
 	require.Nil(t, it.Err())
 	sort.Strings(res)
+	return res
+}
+
+func IteratedValues(t testing.TB, qs graph.QuadStore, it graph.Iterator) []quad.Value {
+	var res []quad.Value
+	for graph.Next(it) {
+		res = append(res, qs.NameOf(it.Result()))
+	}
+	require.Nil(t, it.Err())
+	sort.Sort(quad.ByValueString(res))
 	return res
 }
 
@@ -393,11 +424,21 @@ func TestLoadTypedQuads(t testing.TB, gen DatabaseFunc, conf *Config) {
 		got := qs.NameOf(qs.ValueOf(pq))
 		if !conf.UnTyped {
 			if pt, ok := pq.(quad.Time); ok {
-				if conf.TimeInMs {
+				var trim int64
+				if conf.TimeInMcs {
+					trim = 1000
+				} else if conf.TimeInMs {
+					trim = 1000000
+				}
+				if trim > 0 {
 					tm := time.Time(pt)
 					seconds := tm.Unix()
 					nanos := int64(tm.Sub(time.Unix(seconds, 0)))
-					nanos = (nanos / 1000000) * 1000000
+					if conf.TimeRound {
+						nanos = (nanos/trim + ((nanos/(trim/10))%10)/5) * trim
+					} else {
+						nanos = (nanos / trim) * trim
+					}
 					pq = quad.Time(time.Unix(seconds, nanos).UTC())
 				}
 			}
@@ -560,4 +601,93 @@ func TestIteratorsAndNextResultOrderA(t testing.TB, gen DatabaseFunc) {
 	require.Equal(t, expect, got)
 
 	require.True(t, !outerAnd.Next(), "More than one possible top level output?")
+}
+
+const lt, lte, gt, gte = iterator.CompareLT, iterator.CompareLTE, iterator.CompareGT, iterator.CompareGTE
+
+var tzero = time.Unix(time.Now().Unix(), 0)
+
+var casesCompare = []struct {
+	op     iterator.Operator
+	val    quad.Value
+	expect []quad.Value
+}{
+	{lt, quad.BNode("b"), []quad.Value{
+		quad.BNode("alice"),
+	}},
+	{lte, quad.BNode("bob"), []quad.Value{
+		quad.BNode("alice"), quad.BNode("bob"),
+	}},
+	{lt, quad.String("b"), []quad.Value{
+		quad.String("alice"),
+	}},
+	{lte, quad.String("bob"), []quad.Value{
+		quad.String("alice"), quad.String("bob"),
+	}},
+	{gte, quad.String("b"), []quad.Value{
+		quad.String("bob"), quad.String("charlie"), quad.String("dani"),
+	}},
+	{lt, quad.IRI("b"), []quad.Value{
+		quad.IRI("alice"),
+	}},
+	{lte, quad.IRI("bob"), []quad.Value{
+		quad.IRI("alice"), quad.IRI("bob"),
+	}},
+	{lte, quad.IRI("bob"), []quad.Value{
+		quad.IRI("alice"), quad.IRI("bob"),
+	}},
+	{gte, quad.Int(111), []quad.Value{
+		quad.Int(112),
+	}},
+	{gte, quad.Int(110), []quad.Value{
+		quad.Int(110), quad.Int(112),
+	}},
+	{lt, quad.Int(20), nil},
+	{lte, quad.Int(20), []quad.Value{
+		quad.Int(20),
+	}},
+	{lte, quad.Time(tzero.Add(time.Hour)), []quad.Value{
+		quad.Time(tzero), quad.Time(tzero.Add(time.Hour)),
+	}},
+	{gt, quad.Time(tzero.Add(time.Hour)), []quad.Value{
+		quad.Time(tzero.Add(time.Hour * 49)), quad.Time(tzero.Add(time.Hour * 24 * 365)),
+	}},
+}
+
+func TestCompareTypedValues(t testing.TB, gen DatabaseFunc, conf *Config) {
+	qs, opts, closer := gen(t)
+	defer closer()
+
+	w := MakeWriter(t, qs, opts)
+
+	t1 := tzero
+	t2 := t1.Add(time.Hour)
+	t3 := t2.Add(time.Hour * 48)
+	t4 := t1.Add(time.Hour * 24 * 365)
+
+	err := w.AddQuadSet([]quad.Quad{
+		{quad.BNode("alice"), quad.BNode("bob"), quad.BNode("charlie"), quad.BNode("dani")},
+		{quad.IRI("alice"), quad.IRI("bob"), quad.IRI("charlie"), quad.IRI("dani")},
+		{quad.String("alice"), quad.String("bob"), quad.String("charlie"), quad.String("dani")},
+		{quad.Int(100), quad.Int(112), quad.Int(110), quad.Int(20)},
+		{quad.Time(t1), quad.Time(t2), quad.Time(t3), quad.Time(t4)},
+	})
+	require.Nil(t, err)
+
+	for _, c := range casesCompare {
+		it := iterator.NewComparison(qs.NodesAllIterator(), c.op, c.val, qs)
+		ExpectIteratedValues(t, qs, it, c.expect)
+	}
+
+	for _, c := range casesCompare {
+		it := iterator.NewComparison(qs.NodesAllIterator(), c.op, c.val, qs)
+		nit, ok := qs.OptimizeIterator(it)
+		require.Equal(t, conf.OptimizesComparison, ok)
+		if conf.OptimizesComparison {
+			require.NotEqual(t, it, nit)
+		} else {
+			require.Equal(t, it, nit)
+		}
+		ExpectIteratedValues(t, qs, nit, c.expect)
+	}
 }

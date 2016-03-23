@@ -23,8 +23,11 @@ import (
 	"github.com/google/cayley/quad"
 )
 
-var simpleStore = &store{data: []string{"0", "1", "2", "3", "4", "5"}, parse: true}
-var stringStore = &store{data: []string{"foo", "bar", "baz", "echo"}, parse: true}
+var (
+	simpleStore = &store{data: []string{"0", "1", "2", "3", "4", "5"}, parse: true}
+	stringStore = &store{data: []string{"foo", "bar", "baz", "echo"}, parse: true}
+	mixedStore  = &store{data: []string{"0", "1", "2", "3", "4", "5", "foo", "bar", "baz", "echo"}, parse: true}
+)
 
 func simpleFixedIterator() *Fixed {
 	f := NewFixed(Identity)
@@ -38,6 +41,14 @@ func stringFixedIterator() *Fixed {
 	f := NewFixed(Identity)
 	for _, value := range stringStore.data {
 		f.Add(stringNode(value))
+	}
+	return f
+}
+
+func mixedFixedIterator() *Fixed {
+	f := NewFixed(Identity)
+	for i := 0; i < len(mixedStore.data); i++ {
+		f.Add(Int64Node(i))
 	}
 	return f
 }
@@ -57,7 +68,7 @@ var comparisonTests = []struct {
 	{
 		message:  "successful int64 less than comparison",
 		operand:  quad.Int(3),
-		operator: compareLT,
+		operator: CompareLT,
 		expect:   []quad.Value{quad.Int(0), quad.Int(1), quad.Int(2)},
 		qs:       simpleStore,
 		iterator: simpleFixedIterator,
@@ -65,7 +76,7 @@ var comparisonTests = []struct {
 	{
 		message:  "empty int64 less than comparison",
 		operand:  quad.Int(0),
-		operator: compareLT,
+		operator: CompareLT,
 		expect:   nil,
 		qs:       simpleStore,
 		iterator: simpleFixedIterator,
@@ -73,7 +84,7 @@ var comparisonTests = []struct {
 	{
 		message:  "successful int64 greater than comparison",
 		operand:  quad.Int(2),
-		operator: compareGT,
+		operator: CompareGT,
 		expect:   []quad.Value{quad.Int(3), quad.Int(4)},
 		qs:       simpleStore,
 		iterator: simpleFixedIterator,
@@ -81,15 +92,23 @@ var comparisonTests = []struct {
 	{
 		message:  "successful int64 greater than or equal comparison",
 		operand:  quad.Int(2),
-		operator: compareGTE,
+		operator: CompareGTE,
 		expect:   []quad.Value{quad.Int(2), quad.Int(3), quad.Int(4)},
 		qs:       simpleStore,
 		iterator: simpleFixedIterator,
 	},
 	{
+		message:  "successful int64 greater than or equal comparison (mixed)",
+		operand:  quad.Int(2),
+		operator: CompareGTE,
+		expect:   []quad.Value{quad.Int(2), quad.Int(3), quad.Int(4), quad.Int(5)},
+		qs:       mixedStore,
+		iterator: mixedFixedIterator,
+	},
+	{
 		message:  "successful string less than comparison",
 		operand:  quad.String("echo"),
-		operator: compareLT,
+		operator: CompareLT,
 		expect:   []quad.Value{quad.String("bar"), quad.String("baz")},
 		qs:       stringStore,
 		iterator: stringFixedIterator,
@@ -97,7 +116,7 @@ var comparisonTests = []struct {
 	{
 		message:  "empty string less than comparison",
 		operand:  quad.String(""),
-		operator: compareLT,
+		operator: CompareLT,
 		expect:   nil,
 		qs:       stringStore,
 		iterator: stringFixedIterator,
@@ -105,7 +124,7 @@ var comparisonTests = []struct {
 	{
 		message:  "successful string greater than comparison",
 		operand:  quad.String("echo"),
-		operator: compareGT,
+		operator: CompareGT,
 		expect:   []quad.Value{quad.String("foo")},
 		qs:       stringStore,
 		iterator: stringFixedIterator,
@@ -113,7 +132,7 @@ var comparisonTests = []struct {
 	{
 		message:  "successful string greater than or equal comparison",
 		operand:  quad.String("echo"),
-		operator: compareGTE,
+		operator: CompareGTE,
 		expect:   []quad.Value{quad.String("foo"), quad.String("echo")},
 		qs:       stringStore,
 		iterator: stringFixedIterator,
@@ -146,7 +165,7 @@ var vciContainsTests = []struct {
 }{
 	{
 		message:  "1 is less than 2",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    Int64Node(1),
 		expect:   false,
 		qs:       simpleStore,
@@ -155,7 +174,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "2 is greater than or equal to 2",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    Int64Node(2),
 		expect:   true,
 		qs:       simpleStore,
@@ -164,7 +183,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "3 is greater than or equal to 2",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    Int64Node(3),
 		expect:   true,
 		qs:       simpleStore,
@@ -173,7 +192,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "5 is absent from iterator",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    Int64Node(5),
 		expect:   false,
 		qs:       simpleStore,
@@ -182,7 +201,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "foo is greater than or equal to echo",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    stringNode("foo"),
 		expect:   true,
 		qs:       stringStore,
@@ -191,7 +210,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "echo is greater than or equal to echo",
-		operator: compareGTE,
+		operator: CompareGTE,
 		check:    stringNode("echo"),
 		expect:   true,
 		qs:       stringStore,
@@ -200,7 +219,7 @@ var vciContainsTests = []struct {
 	},
 	{
 		message:  "foo is missing from the iterator",
-		operator: compareLTE,
+		operator: CompareLTE,
 		check:    stringNode("foo"),
 		expect:   false,
 		qs:       stringStore,
@@ -240,7 +259,7 @@ func TestComparisonIteratorErr(t *testing.T) {
 	errIt := newTestIterator(false, wantErr)
 
 	for _, test := range comparisonIteratorTests {
-		vc := NewComparison(errIt, compareLT, test.val, test.qs)
+		vc := NewComparison(errIt, CompareLT, test.val, test.qs)
 
 		if vc.Next() != false {
 			t.Errorf("Comparison iterator did not pass through initial 'false': %s", test.message)

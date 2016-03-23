@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
-	"github.com/google/cayley/quad/nquads"
+	"github.com/google/cayley/quad/cquads"
 
 	_ "github.com/google/cayley/graph/memstore"
 	_ "github.com/google/cayley/writer"
@@ -67,9 +67,23 @@ var testQueries = []struct {
 		expect: []string{"<alice>"},
 	},
 	{
+		message: "get a single vertex (IRI)",
+		query: `
+			g.V(iri("alice")).All()
+		`,
+		expect: []string{"<alice>"},
+	},
+	{
 		message: "use .Out()",
 		query: `
 			g.V("<alice>").Out("<follows>").All()
+		`,
+		expect: []string{"<bob>"},
+	},
+	{
+		message: "use .Out() (IRI)",
+		query: `
+			g.V(iri("alice")).Out(iri("follows")).All()
 		`,
 		expect: []string{"<bob>"},
 	},
@@ -79,6 +93,13 @@ var testQueries = []struct {
 			g.V("<bob>").In("<follows>").All()
 		`,
 		expect: []string{"<alice>", "<charlie>", "<dani>"},
+	},
+	{
+		message: "use .In() with .Filter()",
+		query: `
+			g.V("<bob>").In("<follows>").Filter(gt(iri("c")),lt("<d")).All()
+		`,
+		expect: []string{"<charlie>"},
 	},
 	{
 		message: "use .Both()",
@@ -294,10 +315,13 @@ var testQueries = []struct {
 	},
 }
 
-func runQueryGetTag(g []quad.Quad, query string, tag string) []string {
+func runQueryGetTag(rec func(), g []quad.Quad, query string, tag string) []string {
 	js := makeTestSession(g)
 	c := make(chan interface{}, 1)
-	go js.Execute(query, c, -1)
+	go func() {
+		defer rec()
+		js.Execute(query, c, -1)
+	}()
 
 	var results []string
 	for res := range c {
@@ -323,7 +347,7 @@ func loadGraph(path string, t testing.TB) []quad.Quad {
 	defer f.Close()
 	r = f
 
-	dec := nquads.NewDecoder(r)
+	dec := cquads.NewDecoder(r)
 	q1, err := dec.ReadQuad()
 	if err != nil {
 		t.Fatalf("Failed to Unmarshal: %v", err)
@@ -337,16 +361,24 @@ func loadGraph(path string, t testing.TB) []quad.Quad {
 func TestGremlin(t *testing.T) {
 	simpleGraph := loadGraph("../../data/testdata.nq", t)
 	for _, test := range testQueries {
-		if test.tag == "" {
-			test.tag = TopResultTag
-		}
-		got := runQueryGetTag(simpleGraph, test.query, test.tag)
-		sort.Strings(got)
-		sort.Strings(test.expect)
-		t.Log("testing", test.message)
-		if !reflect.DeepEqual(got, test.expect) {
-			t.Errorf("Failed to %s, got: %v expected: %v", test.message, got, test.expect)
-		}
+		func() {
+			rec := func() {
+				if r := recover(); r != nil {
+					t.Errorf("Unexpected panic on %s: %v", test.message, r)
+				}
+			}
+			defer rec()
+			if test.tag == "" {
+				test.tag = TopResultTag
+			}
+			got := runQueryGetTag(rec, simpleGraph, test.query, test.tag)
+			sort.Strings(got)
+			sort.Strings(test.expect)
+			t.Log("testing", test.message)
+			if !reflect.DeepEqual(got, test.expect) {
+				t.Errorf("Failed to %s, got: %v expected: %v", test.message, got, test.expect)
+			}
+		}()
 	}
 }
 
