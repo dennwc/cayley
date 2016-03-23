@@ -14,6 +14,7 @@ import (
 	"github.com/google/cayley/quad"
 	"github.com/google/cayley/quad/cquads"
 	"github.com/google/cayley/quad/nquads"
+	_ "github.com/google/cayley/quad/pquads"
 
 	// Register other supported decoding formats
 	_ "github.com/google/cayley/quad/json"
