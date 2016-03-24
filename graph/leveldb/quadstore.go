@@ -306,11 +306,15 @@ func (qs *QuadStore) buildQuadWrite(batch *leveldb.Batch, q quad.Quad, id int64,
 	}
 
 	if isAdd && len(entry.History)%2 == 1 {
-		glog.Errorf("attempt to add existing quad %v: %#v", entry, q)
+		if glog.V(2) {
+			glog.Errorf("attempt to add existing quad %v: %#v", entry, q)
+		}
 		return graph.ErrQuadExists
 	}
 	if !isAdd && len(entry.History)%2 == 0 {
-		glog.Errorf("attempt to delete non-existent quad %v: %#c", entry, q)
+		if glog.V(2) {
+			glog.Errorf("attempt to delete non-existent quad %v: %#c", entry, q)
+		}
 		return graph.ErrQuadNotExist
 	}
 
