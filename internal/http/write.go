@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/barakmich/glog"
+	"github.com/golang/glog"
 	"github.com/julienschmidt/httprouter"
 
 	"github.com/google/cayley/internal"

@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/barakmich/glog"
+	"github.com/golang/glog"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"

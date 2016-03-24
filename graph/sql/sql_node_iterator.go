@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 
 	"database/sql"
-	"github.com/barakmich/glog"
+	"github.com/golang/glog"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/quad"
 )

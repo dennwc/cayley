@@ -22,7 +22,7 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/barakmich/glog"
+	"github.com/golang/glog"
 
 	"appengine"
 	"appengine/datastore"
