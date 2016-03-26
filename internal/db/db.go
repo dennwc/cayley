@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/barakmich/glog"
+	"github.com/golang/glog"
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/internal/config"
