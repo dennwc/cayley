@@ -4,7 +4,9 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 
@@ -14,8 +16,6 @@ import (
 	"github.com/google/cayley/graph/proto"
 	"github.com/google/cayley/internal/lru"
 	"github.com/google/cayley/quad"
-	"strconv"
-	"time"
 )
 
 const QuadStoreType = "sql"
@@ -30,14 +30,55 @@ func init() {
 	})
 }
 
-type NodeHash sql.NullString
+type NodeHash [quad.HashSize]byte
 
 func (NodeHash) IsNode() bool { return true }
+func (h NodeHash) Valid() bool {
+	return h != NodeHash{}
+}
+func (h NodeHash) toSQL() interface{} {
+	if !h.Valid() {
+		return nil
+	}
+	return []byte(h[:])
+}
+func (h NodeHash) String() string {
+	if !h.Valid() {
+		return ""
+	}
+	return hex.EncodeToString(h[:])
+}
+func (h *NodeHash) Scan(src interface{}) error {
+	if src == nil {
+		*h = NodeHash{}
+		return nil
+	}
+	b, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("cannot scan %T to NodeHash", src)
+	}
+	if len(b) == 0 {
+		*h = NodeHash{}
+		return nil
+	} else if len(b) != quad.HashSize {
+		return fmt.Errorf("unexpected hash length: %d", len(b))
+	}
+	copy((*h)[:], b)
+	return nil
+}
 
-type QuadHashes [4]sql.NullString
+func hashOf(s quad.Value) (out NodeHash) {
+	if s == nil {
+		return
+	}
+	quad.HashTo(s, out[:])
+	return
+}
+
+type QuadHashes [4]NodeHash
 
 func (QuadHashes) IsNode() bool { return false }
-func (q QuadHashes) Get(d quad.Direction) sql.NullString {
+func (q QuadHashes) Get(d quad.Direction) NodeHash {
 	switch d {
 	case quad.Subject:
 		return q[0]
@@ -78,6 +119,20 @@ func connectSQLTables(addr string, _ graph.Options) (*sql.DB, error) {
 	return conn, nil
 }
 
+const nodesTableStatement = `CREATE TABLE nodes (
+	hash BYTEA PRIMARY KEY,
+	value BYTEA,
+	value_string TEXT,
+	datatype TEXT,
+	language TEXT,
+	iri BOOLEAN,
+	bnode BOOLEAN,
+	value_int BIGINT,
+	value_bool BOOLEAN,
+	value_float double precision,
+	value_time timestamp with time zone
+);`
+
 func createSQLTables(addr string, options graph.Options) error {
 	conn, err := connectSQLTables(addr, options)
 	if err != nil {
@@ -90,20 +145,7 @@ func createSQLTables(addr string, options graph.Options) error {
 		return err
 	}
 
-	table, err := tx.Exec(`
-	CREATE TABLE nodes (
-		hash TEXT PRIMARY KEY,
-		value BYTEA,
-		value_string TEXT,
-		datatype TEXT,
-		language TEXT,
-		iri BOOLEAN,
-		bnode BOOLEAN,
-		value_int BIGINT,
-		value_bool BOOLEAN,
-		value_float double precision,
-		value_time timestamp with time zone
-	);`)
+	table, err := tx.Exec(nodesTableStatement)
 	if err != nil {
 		tx.Rollback()
 		errd := err.(*pq.Error)
@@ -116,10 +158,10 @@ func createSQLTables(addr string, options graph.Options) error {
 	table, err = tx.Exec(`
 	CREATE TABLE quads (
 		horizon BIGSERIAL PRIMARY KEY,
-		subject_hash TEXT NOT NULL REFERENCES nodes (hash),
-		predicate_hash TEXT NOT NULL REFERENCES nodes (hash),
-		object_hash TEXT NOT NULL REFERENCES nodes (hash),
-		label_hash TEXT REFERENCES nodes (hash),
+		subject_hash BYTEA NOT NULL REFERENCES nodes (hash),
+		predicate_hash BYTEA NOT NULL REFERENCES nodes (hash),
+		object_hash BYTEA NOT NULL REFERENCES nodes (hash),
+		label_hash BYTEA REFERENCES nodes (hash),
 		id BIGINT,
 		ts timestamp
 	);`)
@@ -138,13 +180,17 @@ func createSQLTables(addr string, options graph.Options) error {
 	}
 	var index sql.Result
 
-	index, err = tx.Exec(fmt.Sprintf(`
+	const uniqueIndex = `
 	CREATE UNIQUE INDEX spol_unique ON quads (subject_hash, predicate_hash, object_hash, label_hash) WHERE label_hash IS NOT NULL;
 	CREATE UNIQUE INDEX spo_unique ON quads (subject_hash, predicate_hash, object_hash) WHERE label_hash IS NULL;
+	`
+	var spoIndexes = fmt.Sprintf(`
 	CREATE INDEX spo_index ON quads (subject_hash) WITH (FILLFACTOR = %d);
 	CREATE INDEX pos_index ON quads (predicate_hash) WITH (FILLFACTOR = %d);
 	CREATE INDEX osp_index ON quads (object_hash) WITH (FILLFACTOR = %d);
-	`, factor, factor, factor))
+	`, factor, factor, factor)
+
+	index, err = tx.Exec(uniqueIndex + spoIndexes)
 	if err != nil {
 		glog.Errorf("Cannot create indices: %v", index)
 		tx.Rollback()
@@ -185,13 +231,6 @@ func newQuadStore(addr string, options graph.Options) (graph.QuadStore, error) {
 	return &qs, nil
 }
 
-func hashOf(s quad.Value) sql.NullString {
-	if s == nil {
-		return sql.NullString{Valid: false}
-	}
-	return sql.NullString{Valid: true, String: hex.EncodeToString(quad.HashOf(s))}
-}
-
 func convInsertError(err error) error {
 	if err == nil {
 		return err
@@ -218,26 +257,6 @@ func marshalQuadDirections(q quad.Quad) (s, p, o, l []byte, err error) {
 		return
 	}
 	l, err = proto.MarshalValue(q.Label)
-	if err != nil {
-		return
-	}
-	return
-}
-
-func unmarshalQuadDirections(s, p, o, l []byte) (q quad.Quad, err error) {
-	q.Subject, err = proto.UnmarshalValue(s)
-	if err != nil {
-		return
-	}
-	q.Predicate, err = proto.UnmarshalValue(p)
-	if err != nil {
-		return
-	}
-	q.Object, err = proto.UnmarshalValue(o)
-	if err != nil {
-		return
-	}
-	q.Label, err = proto.UnmarshalValue(l)
 	if err != nil {
 		return
 	}
@@ -318,8 +337,8 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 
 	var (
 		insertQuad  *sql.Stmt
-		insertValue map[int]*sql.Stmt   // prepared statements for each value type
-		inserted    map[string]struct{} // tracks already inserted values
+		insertValue map[int]*sql.Stmt     // prepared statements for each value type
+		inserted    map[NodeHash]struct{} // tracks already inserted values
 
 		deleteQuad   *sql.Stmt
 		deleteTriple *sql.Stmt
@@ -335,9 +354,9 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 					return err
 				}
 				insertValue = make(map[int]*sql.Stmt)
-				inserted = make(map[string]struct{}, len(in))
+				inserted = make(map[NodeHash]struct{}, len(in))
 			}
-			var hs, hp, ho, hl sql.NullString
+			var hs, hp, ho, hl NodeHash
 			for _, dir := range quad.Directions {
 				v := d.Quad.Get(dir)
 				if v == nil {
@@ -354,14 +373,14 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				case quad.Label:
 					hl = h
 				}
-				if !h.Valid {
+				if !h.Valid() {
 					continue
-				} else if _, ok := inserted[h.String]; ok {
+				} else if _, ok := inserted[h]; ok {
 					continue
 				}
 				var (
 					nodeKey int
-					values  = []interface{}{h, nil, nil}[:1]
+					values  = []interface{}{h.toSQL(), nil, nil}[:1]
 				)
 				switch v := v.(type) {
 				case quad.IRI:
@@ -422,10 +441,10 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 					glog.Errorf("couldn't exec INSERT statement: %v", err)
 					return err
 				}
-				inserted[h.String] = struct{}{}
+				inserted[h] = struct{}{}
 			}
 			_, err := insertQuad.Exec(
-				hs, hp, ho, hl,
+				hs.toSQL(), hp.toSQL(), ho.toSQL(), hl.toSQL(),
 				d.ID.Int(),
 				d.Timestamp,
 			)
@@ -447,9 +466,9 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 			}
 			var result sql.Result
 			if d.Quad.Label == nil {
-				result, err = deleteTriple.Exec(hashOf(d.Quad.Subject), hashOf(d.Quad.Predicate), hashOf(d.Quad.Object))
+				result, err = deleteTriple.Exec(hashOf(d.Quad.Subject).toSQL(), hashOf(d.Quad.Predicate).toSQL(), hashOf(d.Quad.Object).toSQL())
 			} else {
-				result, err = deleteQuad.Exec(hashOf(d.Quad.Subject), hashOf(d.Quad.Predicate), hashOf(d.Quad.Object), hashOf(d.Quad.Label))
+				result, err = deleteQuad.Exec(hashOf(d.Quad.Subject).toSQL(), hashOf(d.Quad.Predicate).toSQL(), hashOf(d.Quad.Object).toSQL(), hashOf(d.Quad.Label).toSQL())
 			}
 			if err != nil {
 				glog.Errorf("couldn't exec DELETE statement: %v", err)
@@ -493,10 +512,10 @@ func (qs *QuadStore) ApplyDeltas(in []graph.Delta, opts graph.IgnoreOpts) error 
 func (qs *QuadStore) Quad(val graph.Value) quad.Quad {
 	h := val.(QuadHashes)
 	return quad.Quad{
-		Subject:   qs.NameOf(NodeHash(h.Get(quad.Subject))),
-		Predicate: qs.NameOf(NodeHash(h.Get(quad.Predicate))),
-		Object:    qs.NameOf(NodeHash(h.Get(quad.Object))),
-		Label:     qs.NameOf(NodeHash(h.Get(quad.Label))),
+		Subject:   qs.NameOf(h.Get(quad.Subject)),
+		Predicate: qs.NameOf(h.Get(quad.Predicate)),
+		Object:    qs.NameOf(h.Get(quad.Object)),
+		Label:     qs.NameOf(h.Get(quad.Label)),
 	}
 }
 
@@ -522,11 +541,11 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 		return nil
 	}
 	hash := v.(NodeHash)
-	if !hash.Valid || hash.String == "" {
+	if !hash.Valid() {
 		glog.V(2).Info("NameOf was nil")
 		return nil
 	}
-	if val, ok := qs.ids.Get(hash.String); ok {
+	if val, ok := qs.ids.Get(hash.String()); ok {
 		return val.(quad.Value)
 	}
 	query := `SELECT
@@ -541,7 +560,7 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 		value_float,
 		value_time
 	FROM nodes WHERE hash = $1 LIMIT 1;`
-	c := qs.db.QueryRow(query, sql.NullString(hash))
+	c := qs.db.QueryRow(query, hash.toSQL())
 	var (
 		data   []byte
 		str    sql.NullString
@@ -605,7 +624,7 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 		val = qv
 	}
 	if val != nil {
-		qs.ids.Put(hash.String, val)
+		qs.ids.Put(hash.String(), val)
 	}
 	return val
 }
@@ -662,7 +681,7 @@ func (qs *QuadStore) Type() string {
 	return QuadStoreType
 }
 
-func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, hash sql.NullString) int64 {
+func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, hash NodeHash) int64 {
 	var err error
 	if isAll {
 		return qs.Size()
@@ -673,17 +692,17 @@ func (qs *QuadStore) sizeForIterator(isAll bool, dir quad.Direction, hash sql.Nu
 		}
 		return (qs.Size() / 1000) + 1
 	}
-	if val, ok := qs.sizes.Get(hash.String + string(dir.Prefix())); ok {
+	if val, ok := qs.sizes.Get(hash.String() + string(dir.Prefix())); ok {
 		return val.(int64)
 	}
 	var size int64
 	glog.V(4).Infoln("sql: getting size for select %s, %v", dir.String(), hash)
 	err = qs.db.QueryRow(
-		fmt.Sprintf("SELECT count(*) FROM quads WHERE %s_hash = $1;", dir.String()), hash).Scan(&size)
+		fmt.Sprintf("SELECT count(*) FROM quads WHERE %s_hash = $1;", dir.String()), hash.toSQL()).Scan(&size)
 	if err != nil {
 		glog.Errorln("Error getting size from SQL database: %v", err)
 		return 0
 	}
-	qs.sizes.Put(hash.String+string(dir.Prefix()), size)
+	qs.sizes.Put(hash.String()+string(dir.Prefix()), size)
 	return size
 }
