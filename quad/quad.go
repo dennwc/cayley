@@ -228,3 +228,30 @@ func (o ByQuadString) Less(i, j int) bool {
 	}
 }
 func (o ByQuadString) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+
+type ByQuadString []Quad
+
+func (o ByQuadString) Len() int { return len(o) }
+func (o ByQuadString) Less(i, j int) bool {
+	switch { // TODO: optimize
+	case StringOf(o[i].Subject) < StringOf(o[j].Subject),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) < StringOf(o[j].Predicate),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) == StringOf(o[j].Predicate) &&
+			StringOf(o[i].Object) < StringOf(o[j].Object),
+
+		StringOf(o[i].Subject) == StringOf(o[j].Subject) &&
+			StringOf(o[i].Predicate) == StringOf(o[j].Predicate) &&
+			StringOf(o[i].Object) == StringOf(o[j].Object) &&
+			StringOf(o[i].Label) < StringOf(o[j].Label):
+
+		return true
+
+	default:
+		return false
+	}
+}
+func (o ByQuadString) Swap(i, j int) { o[i], o[j] = o[j], o[i] }

@@ -91,11 +91,15 @@ func runTag(path *Path, tag string) []quad.Value {
 	for graph.Next(it) {
 		tags := make(map[string]graph.Value)
 		it.TagResults(tags)
-		out = append(out, path.qs.NameOf(tags[tag]))
+		if t, ok := tags[tag]; ok {
+			out = append(out, path.qs.NameOf(t))
+		}
 		for it.NextPath() {
 			tags := make(map[string]graph.Value)
 			it.TagResults(tags)
-			out = append(out, path.qs.NameOf(tags[tag]))
+			if t, ok := tags[tag]; ok {
+				out = append(out, path.qs.NameOf(t))
+			}
 		}
 	}
 	return out
@@ -288,6 +292,23 @@ func testSet(qs graph.QuadStore) []test {
 			message: "reverse context",
 			path:    StartPath(qs, vGreg).Tag("base").LabelContext(vSmartGraph).Out(vStatus).Tag("status").Back("base"),
 			expect:  []quad.Value{vGreg},
+		},
+		// Optional tests
+		{
+			message: "save limits top level",
+			path:    StartPath(qs, vBob, vCharlie).Out(vFollows).Save(vStatus, "statustag"),
+			expect:  []quad.Value{vBob, vDani},
+		},
+		{
+			message: "optional still returns top level",
+			path:    StartPath(qs, vBob, vCharlie).Out(vFollows).SaveOptional(vStatus, "statustag"),
+			expect:  []quad.Value{vBob, vFred, vDani},
+		},
+		{
+			message: "optional has the appropriate tags",
+			path:    StartPath(qs, vBob, vCharlie).Out(vFollows).SaveOptional(vStatus, "statustag"),
+			tag:     "statustag",
+			expect:  []quad.Value{vCool, vCool},
 		},
 	}
 }
