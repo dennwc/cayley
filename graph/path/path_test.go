@@ -222,7 +222,7 @@ func testSet(qs graph.QuadStore) []test {
 			message: "show a simple saveOpt",
 			path:    StartPath(qs).SaveOptional(vStatus, "somecool"),
 			tag:     "somecool",
-			expect:  []quad.Value{nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, vCool, vCool, vCool, vSmart, vSmart},
+			expect:  []quad.Value{vCool, vCool, vCool, vSmart, vSmart},
 		},
 		{
 			message: "show a simple saveR",
