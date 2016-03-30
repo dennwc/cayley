@@ -67,6 +67,9 @@ func (it *quadsAllIterator) Next() bool {
 	out := it.Int64.Next()
 	if out {
 		i64 := int64(it.Int64.Result().(iterator.Int64Quad))
+		if i64 >= int64(len(it.qs.log)) {
+			return false
+		}
 		if it.qs.log[i64].DeletedBy != 0 || it.qs.log[i64].Action == graph.Delete {
 			return it.Next()
 		}

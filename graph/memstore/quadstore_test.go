@@ -243,3 +243,13 @@ func TestTransaction(t *testing.T) {
 		t.Error("Appended a new quad in a failed transaction")
 	}
 }
+
+func TestEmpty(t *testing.T) {
+	qs := newQuadStore()
+	if qs.QuadsAllIterator().(graph.Nexter).Next() {
+		t.Error("next quad in empty store")
+	}
+	if qs.NodesAllIterator().(graph.Nexter).Next() {
+		t.Error("next node in empty store")
+	}
+}
