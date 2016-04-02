@@ -20,6 +20,8 @@ import (
 
 const QuadStoreType = "sql"
 
+const defaultFillFactor = 50
+
 func init() {
 	graph.RegisterQuadStore(QuadStoreType, graph.QuadStoreRegistration{
 		NewFunc:           newQuadStore,
@@ -119,6 +121,33 @@ func connectSQLTables(addr string, _ graph.Options) (*sql.DB, error) {
 	return conn, nil
 }
 
+var nodesColumns = []string{
+	"hash",
+	"value",
+	"value_string",
+	"datatype",
+	"language",
+	"iri",
+	"bnode",
+	"value_int",
+	"value_bool",
+	"value_float",
+	"value_time",
+}
+
+var nodeInsertColumns = [][]string{
+	{"value"},
+	{"value_string", "iri"},
+	{"value_string", "bnode"},
+	{"value_string"},
+	{"value_string", "datatype"},
+	{"value_string", "language"},
+	{"value_int"},
+	{"value_bool"},
+	{"value_float"},
+	{"value_time"},
+}
+
 const nodesTableStatement = `CREATE TABLE nodes (
 	hash BYTEA PRIMARY KEY,
 	value BYTEA,
@@ -132,6 +161,26 @@ const nodesTableStatement = `CREATE TABLE nodes (
 	value_float double precision,
 	value_time timestamp with time zone
 );`
+
+const quadsUniqueIndex = `
+	CREATE UNIQUE INDEX spol_unique ON quads (subject_hash, predicate_hash, object_hash, label_hash) WHERE label_hash IS NOT NULL;
+	CREATE UNIQUE INDEX spo_unique ON quads (subject_hash, predicate_hash, object_hash) WHERE label_hash IS NULL;
+	`
+
+const quadsForeignIndex = `
+	ALTER TABLE quads ADD CONSTRAINT subject_hash_fk FOREIGN KEY (subject_hash) REFERENCES nodes (hash);
+	ALTER TABLE quads ADD CONSTRAINT predicate_hash_fk FOREIGN KEY (predicate_hash) REFERENCES nodes (hash);
+	ALTER TABLE quads ADD CONSTRAINT object_hash_fk FOREIGN KEY (object_hash) REFERENCES nodes (hash);
+	ALTER TABLE quads ADD CONSTRAINT label_hash_fk FOREIGN KEY (label_hash) REFERENCES nodes (hash);
+	`
+
+func quadsSecondaryIndexes(factor int) string {
+	return fmt.Sprintf(`
+	CREATE INDEX spo_index ON quads (subject_hash) WITH (FILLFACTOR = %d);
+	CREATE INDEX pos_index ON quads (predicate_hash) WITH (FILLFACTOR = %d);
+	CREATE INDEX osp_index ON quads (object_hash) WITH (FILLFACTOR = %d);
+	`, factor, factor, factor)
+}
 
 func createSQLTables(addr string, options graph.Options) error {
 	conn, err := connectSQLTables(addr, options)
@@ -158,10 +207,10 @@ func createSQLTables(addr string, options graph.Options) error {
 	table, err = tx.Exec(`
 	CREATE TABLE quads (
 		horizon BIGSERIAL PRIMARY KEY,
-		subject_hash BYTEA NOT NULL REFERENCES nodes (hash),
-		predicate_hash BYTEA NOT NULL REFERENCES nodes (hash),
-		object_hash BYTEA NOT NULL REFERENCES nodes (hash),
-		label_hash BYTEA REFERENCES nodes (hash),
+		subject_hash BYTEA NOT NULL,
+		predicate_hash BYTEA NOT NULL,
+		object_hash BYTEA NOT NULL,
+		label_hash BYTEA,
 		id BIGINT,
 		ts timestamp
 	);`)
@@ -176,21 +225,12 @@ func createSQLTables(addr string, options graph.Options) error {
 	}
 	factor, factorOk, err := options.IntKey("db_fill_factor")
 	if !factorOk {
-		factor = 50
+		factor = defaultFillFactor
 	}
+	spoIndexes := quadsSecondaryIndexes(factor)
+
 	var index sql.Result
-
-	const uniqueIndex = `
-	CREATE UNIQUE INDEX spol_unique ON quads (subject_hash, predicate_hash, object_hash, label_hash) WHERE label_hash IS NOT NULL;
-	CREATE UNIQUE INDEX spo_unique ON quads (subject_hash, predicate_hash, object_hash) WHERE label_hash IS NULL;
-	`
-	var spoIndexes = fmt.Sprintf(`
-	CREATE INDEX spo_index ON quads (subject_hash) WITH (FILLFACTOR = %d);
-	CREATE INDEX pos_index ON quads (predicate_hash) WITH (FILLFACTOR = %d);
-	CREATE INDEX osp_index ON quads (object_hash) WITH (FILLFACTOR = %d);
-	`, factor, factor, factor)
-
-	index, err = tx.Exec(uniqueIndex + spoIndexes)
+	index, err = tx.Exec(quadsUniqueIndex + quadsForeignIndex + spoIndexes)
 	if err != nil {
 		glog.Errorf("Cannot create indices: %v", index)
 		tx.Rollback()
@@ -306,17 +346,56 @@ func (qs *QuadStore) copyFrom(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpt
 	return nil
 }
 
-var nodeInsertColumns = [][]string{
-	{"value"},
-	{"value_string", "iri"},
-	{"value_string", "bnode"},
-	{"value_string"},
-	{"value_string", "datatype"},
-	{"value_string", "language"},
-	{"value_int"},
-	{"value_bool"},
-	{"value_float"},
-	{"value_time"},
+func escapeNullByte(s string) string {
+	return strings.Replace(s, "\u0000", `\x00`, -1)
+}
+func unescapeNullByte(s string) string {
+	return strings.Replace(s, `\x00`, "\u0000", -1)
+}
+
+func nodeValues(h NodeHash, v quad.Value) (int, []interface{}, error) {
+	var (
+		nodeKey int
+		values  = []interface{}{h.toSQL(), nil, nil}[:1]
+	)
+	switch v := v.(type) {
+	case quad.IRI:
+		nodeKey = 1
+		values = append(values, string(v), true)
+	case quad.BNode:
+		nodeKey = 2
+		values = append(values, string(v), true)
+	case quad.String:
+		nodeKey = 3
+		values = append(values, escapeNullByte(string(v)))
+	case quad.TypedString:
+		nodeKey = 4
+		values = append(values, escapeNullByte(string(v.Value)), string(v.Type))
+	case quad.LangString:
+		nodeKey = 5
+		values = append(values, escapeNullByte(string(v.Value)), v.Lang)
+	case quad.Int:
+		nodeKey = 6
+		values = append(values, int64(v))
+	case quad.Bool:
+		nodeKey = 7
+		values = append(values, bool(v))
+	case quad.Float:
+		nodeKey = 8
+		values = append(values, float64(v))
+	case quad.Time:
+		nodeKey = 9
+		values = append(values, time.Time(v))
+	default:
+		nodeKey = 0
+		p, err := proto.MarshalValue(v)
+		if err != nil {
+			glog.Errorf("couldn't marshal value: %v", err)
+			return 0, nil, err
+		}
+		values = append(values, p)
+	}
+	return nodeKey, values, nil
 }
 
 func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.IgnoreOpts) error {
@@ -378,46 +457,9 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 				} else if _, ok := inserted[h]; ok {
 					continue
 				}
-				var (
-					nodeKey int
-					values  = []interface{}{h.toSQL(), nil, nil}[:1]
-				)
-				switch v := v.(type) {
-				case quad.IRI:
-					nodeKey = 1
-					values = append(values, string(v), true)
-				case quad.BNode:
-					nodeKey = 2
-					values = append(values, string(v), true)
-				case quad.String:
-					nodeKey = 3
-					values = append(values, string(v))
-				case quad.TypedString:
-					nodeKey = 4
-					values = append(values, string(v.Value), string(v.Type))
-				case quad.LangString:
-					nodeKey = 5
-					values = append(values, string(v.Value), v.Lang)
-				case quad.Int:
-					nodeKey = 6
-					values = append(values, int64(v))
-				case quad.Bool:
-					nodeKey = 7
-					values = append(values, bool(v))
-				case quad.Float:
-					nodeKey = 8
-					values = append(values, float64(v))
-				case quad.Time:
-					nodeKey = 9
-					values = append(values, time.Time(v))
-				default:
-					nodeKey = 0
-					p, err := proto.MarshalValue(v)
-					if err != nil {
-						glog.Errorf("couldn't marshal value: %v", err)
-						return err
-					}
-					values = append(values, p)
+				nodeKey, values, err := nodeValues(h, v)
+				if err != nil {
+					return err
 				}
 				stmt, ok := insertValue[nodeKey]
 				if !ok {
@@ -435,7 +477,7 @@ func (qs *QuadStore) runTxPostgres(tx *sql.Tx, in []graph.Delta, opts graph.Igno
 					}
 					insertValue[nodeKey] = stmt
 				}
-				_, err := stmt.Exec(values...)
+				_, err = stmt.Exec(values...)
 				err = convInsertError(err)
 				if err != nil {
 					glog.Errorf("couldn't exec INSERT statement: %v", err)
@@ -596,16 +638,16 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 			val = quad.BNode(str.String)
 		} else if lang.Valid {
 			val = quad.LangString{
-				Value: quad.String(str.String),
+				Value: quad.String(unescapeNullByte(str.String)),
 				Lang:  lang.String,
 			}
 		} else if typ.Valid {
 			val = quad.TypedString{
-				Value: quad.String(str.String),
+				Value: quad.String(unescapeNullByte(str.String)),
 				Type:  quad.IRI(typ.String),
 			}
 		} else {
-			val = quad.String(str.String)
+			val = quad.String(unescapeNullByte(str.String))
 		}
 	} else if vint.Valid {
 		val = quad.Int(vint.Int64)
