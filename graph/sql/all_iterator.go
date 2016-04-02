@@ -142,7 +142,7 @@ func (it *AllIterator) Next() bool {
 		return false
 	}
 	if it.table == "nodes" {
-		var hash sql.NullString
+		var hash NodeHash
 		err := it.cursor.Scan(&hash)
 		if err != nil {
 			glog.Errorf("Error nexting node iterator: %v", err)
