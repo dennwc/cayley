@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
-	"github.com/google/cayley/graph/memstore/b"
 	"github.com/google/cayley/quad"
 )
 
@@ -30,8 +29,8 @@ type Iterator struct {
 	uid    uint64
 	qs     *QuadStore
 	tags   graph.Tagger
-	tree   *b.Tree
-	iter   *b.Enumerator
+	tree   *Tree
+	iter   *Enumerator
 	result int64
 	err    error
 
@@ -39,11 +38,8 @@ type Iterator struct {
 	value graph.Value
 }
 
-func NewIterator(tree *b.Tree, qs *QuadStore, d quad.Direction, value graph.Value) *Iterator {
-	iter, err := tree.SeekFirst()
-	if err != nil {
-		iter = nil
-	}
+func NewIterator(tree *Tree, qs *QuadStore, d quad.Direction, value graph.Value) *Iterator {
+	iter := tree.SeekFirst()
 	return &Iterator{
 		nodes: d == 0,
 		uid:   iterator.NextUID(),
@@ -60,11 +56,7 @@ func (it *Iterator) UID() uint64 {
 }
 
 func (it *Iterator) Reset() {
-	var err error
-	it.iter, err = it.tree.SeekFirst()
-	if err != nil {
-		it.iter = nil
-	}
+	it.iter = it.tree.SeekFirst()
 }
 
 func (it *Iterator) Tagger() *graph.Tagger {
@@ -82,7 +74,7 @@ func (it *Iterator) TagResults(dst map[string]graph.Value) {
 }
 
 func (it *Iterator) Clone() graph.Iterator {
-	var iter *b.Enumerator
+	var iter *Enumerator
 	if it.result > 0 {
 		var ok bool
 		iter, ok = it.tree.Seek(it.result)
@@ -90,11 +82,7 @@ func (it *Iterator) Clone() graph.Iterator {
 			panic("value unexpectedly missing")
 		}
 	} else {
-		var err error
-		iter, err = it.tree.SeekFirst()
-		if err != nil {
-			iter = nil
-		}
+		iter = it.tree.SeekFirst()
 	}
 
 	m := &Iterator{
@@ -115,7 +103,10 @@ func (it *Iterator) Close() error {
 }
 
 func (it *Iterator) checkValid(index int64) bool {
-	return it.qs.log[index].DeletedBy == 0
+	it.qs.logmu.RLock()
+	valid := it.qs.log[index].DeletedBy == 0
+	it.qs.logmu.RUnlock()
+	return valid
 }
 
 func (it *Iterator) Next() bool {
@@ -124,7 +115,7 @@ func (it *Iterator) Next() bool {
 	if it.iter == nil {
 		return graph.NextLogOut(it, nil, false)
 	}
-	result, _, err := it.iter.Next()
+	result, err := it.iter.Next()
 	if err != nil {
 		if err != io.EOF {
 			it.err = err
@@ -175,7 +166,7 @@ func (it *Iterator) Contains(v graph.Value) bool {
 	} else {
 		vi = int64(v.(iterator.Int64Quad))
 	}
-	if _, ok := it.tree.Get(vi); ok {
+	if it.tree.Contains(vi) {
 		it.result = vi
 		return graph.ContainsLogOut(it, v, true)
 	}

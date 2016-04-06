@@ -31,7 +31,10 @@ type (
 
 func newNodesAllIterator(qs *QuadStore) *nodesAllIterator {
 	var out nodesAllIterator
-	out.Int64 = *iterator.NewInt64(1, qs.nextID-1, true)
+	qs.idmu.RLock()
+	id := qs.nextID - 1
+	qs.idmu.RUnlock()
+	out.Int64 = *iterator.NewInt64(1, id, true)
 	out.qs = qs
 	return &out
 }
@@ -45,7 +48,9 @@ func (it *nodesAllIterator) Next() bool {
 	if !it.Int64.Next() {
 		return false
 	}
+	it.qs.idmu.RLock()
 	_, ok := it.qs.revIDMap[int64(it.Int64.Result().(iterator.Int64Node))]
+	it.qs.idmu.RUnlock()
 	if !ok {
 		return it.Next()
 	}
@@ -58,23 +63,34 @@ func (it *nodesAllIterator) Err() error {
 
 func newQuadsAllIterator(qs *QuadStore) *quadsAllIterator {
 	var out quadsAllIterator
-	out.Int64 = *iterator.NewInt64(1, qs.nextQuadID-1, false)
+	qs.logmu.RLock()
+	id := qs.nextQuadID - 1
+	qs.logmu.RUnlock()
+	out.Int64 = *iterator.NewInt64(1, id, false)
 	out.qs = qs
 	return &out
 }
 
-func (it *quadsAllIterator) Next() bool {
-	out := it.Int64.Next()
-	if out {
-		i64 := int64(it.Int64.Result().(iterator.Int64Quad))
-		if i64 >= int64(len(it.qs.log)) {
-			return false
+func (it *quadsAllIterator) Next() (next bool) {
+	for {
+		next = it.Int64.Next()
+		if !next {
+			break
 		}
-		if it.qs.log[i64].DeletedBy != 0 || it.qs.log[i64].Action == graph.Delete {
-			return it.Next()
+		i64 := int64(it.Int64.Result().(iterator.Int64Quad))
+		var skip bool
+		it.qs.logmu.RLock()
+		if i64 < int64(len(it.qs.log)) {
+			skip = it.qs.log[i64].DeletedBy != 0 || it.qs.log[i64].Action == graph.Delete
+		} else {
+			next = false
+		}
+		it.qs.logmu.RUnlock()
+		if !next || !skip {
+			break
 		}
 	}
-	return out
+	return
 }
 
 // Override Optimize from it.Int64 - it will hide our Next implementation in other cases.

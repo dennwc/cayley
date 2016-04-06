@@ -132,7 +132,7 @@ func TestIteratorsAndNextResultOrderA(t *testing.T) {
 	}
 	val := outerAnd.Result()
 	if qs.NameOf(val) != quad.Raw("C") {
-		t.Errorf("Matching subtree should be %s, got %s", "barak", qs.NameOf(val))
+		t.Errorf("Matching subtree should be %s, got %s", "C", qs.NameOf(val))
 	}
 
 	var (

@@ -16,6 +16,7 @@ package memstore
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -45,35 +46,98 @@ func cmp(a, b int64) int {
 }
 
 type QuadDirectionIndex struct {
-	index [4]map[int64]*b.Tree
+	mu    sync.RWMutex
+	index [4]map[int64]*Tree
 }
 
 func NewQuadDirectionIndex() QuadDirectionIndex {
-	return QuadDirectionIndex{[...]map[int64]*b.Tree{
-		quad.Subject - 1:   make(map[int64]*b.Tree),
-		quad.Predicate - 1: make(map[int64]*b.Tree),
-		quad.Object - 1:    make(map[int64]*b.Tree),
-		quad.Label - 1:     make(map[int64]*b.Tree),
+	return QuadDirectionIndex{index: [...]map[int64]*Tree{
+		quad.Subject - 1:   make(map[int64]*Tree),
+		quad.Predicate - 1: make(map[int64]*Tree),
+		quad.Object - 1:    make(map[int64]*Tree),
+		quad.Label - 1:     make(map[int64]*Tree),
 	}}
 }
 
-func (qdi QuadDirectionIndex) Tree(d quad.Direction, id int64) *b.Tree {
+type Tree struct {
+	mu   sync.RWMutex
+	tree *b.Tree
+}
+
+func (t *Tree) Len() int {
+	t.mu.RLock()
+	n := t.tree.Len()
+	t.mu.RUnlock()
+	return n
+}
+func (t *Tree) Set(id int64) {
+	t.mu.Lock()
+	t.tree.Set(id, struct{}{})
+	t.mu.Unlock()
+}
+func (t *Tree) Contains(id int64) bool {
+	t.mu.RLock()
+	_, ok := t.tree.Get(id)
+	t.mu.RUnlock()
+	return ok
+}
+func (t *Tree) SeekFirst() *Enumerator {
+	t.mu.RLock()
+	iter, err := t.tree.SeekFirst()
+	t.mu.RUnlock()
+	if err != nil {
+		return nil
+	}
+	return &Enumerator{tree: t, e: iter}
+}
+func (t *Tree) Seek(id int64) (*Enumerator, bool) {
+	t.mu.RLock()
+	iter, ok := t.tree.Seek(id)
+	t.mu.RUnlock()
+	if !ok {
+		return nil, ok
+	}
+	return &Enumerator{tree: t, e: iter}, ok
+}
+
+type Enumerator struct {
+	tree *Tree
+	e    *b.Enumerator
+}
+
+func (e *Enumerator) Next() (int64, error) {
+	e.tree.mu.RLock()
+	result, _, err := e.e.Next()
+	e.tree.mu.RUnlock()
+	return result, err
+}
+
+func (qdi *QuadDirectionIndex) Tree(d quad.Direction, id int64) *Tree {
 	if d < quad.Subject || d > quad.Label {
 		panic("illegal direction")
 	}
+	qdi.mu.RLock()
 	tree, ok := qdi.index[d-1][id]
+	qdi.mu.RUnlock()
 	if !ok {
-		tree = b.TreeNew(cmp)
-		qdi.index[d-1][id] = tree
+		qdi.mu.Lock()
+		tree, ok = qdi.index[d-1][id]
+		if !ok {
+			tree = &Tree{tree: b.TreeNew(cmp)}
+			qdi.index[d-1][id] = tree
+		}
+		qdi.mu.Unlock()
 	}
 	return tree
 }
 
-func (qdi QuadDirectionIndex) Get(d quad.Direction, id int64) (*b.Tree, bool) {
+func (qdi *QuadDirectionIndex) Get(d quad.Direction, id int64) (*Tree, bool) {
 	if d < quad.Subject || d > quad.Label {
 		panic("illegal direction")
 	}
+	qdi.mu.RLock()
 	tree, ok := qdi.index[d-1][id]
+	qdi.mu.RUnlock()
 	return tree, ok
 }
 
@@ -86,13 +150,17 @@ type LogEntry struct {
 }
 
 type QuadStore struct {
-	nextID     int64
-	nextQuadID int64
-	idMap      map[string]int64
-	revIDMap   map[int64]quad.Value
+	idmu     sync.RWMutex
+	idMap    map[string]int64
+	revIDMap map[int64]quad.Value
+	nextID   int64
+
+	logmu      sync.RWMutex
 	log        []LogEntry
+	nextQuadID int64
 	size       int64
-	index      QuadDirectionIndex
+
+	index QuadDirectionIndex
 	// vip_index map[string]map[int64]map[string]map[int64]*b.Tree
 }
 
@@ -158,13 +226,15 @@ const maxInt = int(^uint(0) >> 1)
 
 func (qs *QuadStore) indexOf(t quad.Quad) (int64, bool) {
 	min := maxInt
-	var tree *b.Tree
+	var tree *Tree
 	for d := quad.Subject; d <= quad.Label; d++ {
 		sid := t.Get(d)
 		if d == quad.Label && sid == nil {
 			continue
 		}
+		qs.idmu.RLock()
 		id, ok := qs.idMap[quad.StringOf(sid)]
+		qs.idmu.RUnlock()
 		// If we've never heard about a node, it must not exist
 		if !ok {
 			return 0, false
@@ -181,7 +251,10 @@ func (qs *QuadStore) indexOf(t quad.Quad) (int64, bool) {
 
 	it := NewIterator(tree, qs, 0, nil)
 	for it.Next() {
-		if t == qs.log[it.result].Quad {
+		qs.logmu.RLock()
+		l := qs.log[it.result]
+		qs.logmu.RUnlock()
+		if t == l.Quad {
 			return it.result, true
 		}
 	}
@@ -192,6 +265,7 @@ func (qs *QuadStore) AddDelta(d graph.Delta) error {
 	if _, exists := qs.indexOf(d.Quad); exists {
 		return graph.ErrQuadExists
 	}
+	qs.logmu.Lock()
 	qid := qs.nextQuadID
 	qs.log = append(qs.log, LogEntry{
 		ID:        d.ID.Int(),
@@ -200,6 +274,7 @@ func (qs *QuadStore) AddDelta(d graph.Delta) error {
 		Timestamp: d.Timestamp})
 	qs.size++
 	qs.nextQuadID++
+	qs.logmu.Unlock()
 
 	for dir := quad.Subject; dir <= quad.Label; dir++ {
 		sid := d.Quad.Get(dir)
@@ -207,14 +282,21 @@ func (qs *QuadStore) AddDelta(d graph.Delta) error {
 			continue
 		}
 		ssid := quad.StringOf(sid)
-		if _, ok := qs.idMap[ssid]; !ok {
-			qs.idMap[ssid] = qs.nextID
-			qs.revIDMap[qs.nextID] = sid
-			qs.nextID++
+		qs.idmu.RLock()
+		id, ok := qs.idMap[ssid]
+		qs.idmu.RUnlock()
+		if !ok {
+			qs.idmu.Lock()
+			id, ok = qs.idMap[ssid]
+			if !ok {
+				id = qs.nextID
+				qs.idMap[ssid] = qs.nextID
+				qs.revIDMap[qs.nextID] = sid
+				qs.nextID++
+			}
+			qs.idmu.Unlock()
 		}
-		id := qs.idMap[ssid]
-		tree := qs.index.Tree(dir, id)
-		tree.Set(qid, struct{}{})
+		qs.index.Tree(dir, id).Set(qid)
 	}
 
 	// TODO(barakmich): Add VIP indexing
@@ -226,7 +308,7 @@ func (qs *QuadStore) RemoveDelta(d graph.Delta) error {
 	if !exists {
 		return graph.ErrQuadNotExist
 	}
-
+	qs.logmu.Lock()
 	quadID := qs.nextQuadID
 	qs.log = append(qs.log, LogEntry{
 		ID:        d.ID.Int(),
@@ -236,11 +318,15 @@ func (qs *QuadStore) RemoveDelta(d graph.Delta) error {
 	qs.log[prevQuadID].DeletedBy = quadID
 	qs.size--
 	qs.nextQuadID++
+	qs.logmu.Unlock()
 	return nil
 }
 
 func (qs *QuadStore) Quad(index graph.Value) quad.Quad {
-	return qs.log[index.(iterator.Int64Quad)].Quad
+	qs.logmu.RLock()
+	q := qs.log[index.(iterator.Int64Quad)].Quad
+	qs.logmu.RUnlock()
+	return q
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, value graph.Value) graph.Iterator {
@@ -252,14 +338,22 @@ func (qs *QuadStore) QuadIterator(d quad.Direction, value graph.Value) graph.Ite
 }
 
 func (qs *QuadStore) Horizon() graph.PrimaryKey {
-	return graph.NewSequentialKey(qs.log[len(qs.log)-1].ID)
+	qs.logmu.RLock()
+	id := qs.log[len(qs.log)-1].ID
+	qs.logmu.RUnlock()
+	return graph.NewSequentialKey(id)
 }
 
 func (qs *QuadStore) Size() int64 {
-	return qs.size
+	qs.logmu.RLock()
+	size := qs.size
+	qs.logmu.RUnlock()
+	return size
 }
 
 func (qs *QuadStore) DebugPrint() {
+	qs.logmu.RLock()
+	defer qs.logmu.RUnlock()
 	for i, l := range qs.log {
 		if i == 0 {
 			continue
@@ -269,14 +363,20 @@ func (qs *QuadStore) DebugPrint() {
 }
 
 func (qs *QuadStore) ValueOf(name quad.Value) graph.Value {
-	return iterator.Int64Node(qs.idMap[quad.StringOf(name)])
+	qs.idmu.RLock()
+	v := qs.idMap[quad.StringOf(name)]
+	qs.idmu.RUnlock()
+	return iterator.Int64Node(v)
 }
 
 func (qs *QuadStore) NameOf(id graph.Value) quad.Value {
 	if id == nil {
 		return nil
 	}
-	return qs.revIDMap[int64(id.(iterator.Int64Node))]
+	qs.idmu.RLock()
+	v := qs.revIDMap[int64(id.(iterator.Int64Node))]
+	qs.idmu.RUnlock()
+	return v
 }
 
 func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
