@@ -233,6 +233,18 @@ func (s *Session) Collate(result interface{}) {
 	}
 }
 
+func (s *Session) RawResult(result interface{}) map[string]graph.Value {
+	data, ok := result.(*Result)
+	if !ok || data.metaresult {
+		return nil
+	}
+	if data.val != nil {
+		//s.dataOutput = append(s.dataOutput, data.val)
+		return nil
+	}
+	return data.actualResults
+}
+
 func (s *Session) Results() (interface{}, error) {
 	defer s.Clear()
 	if s.err != nil {
