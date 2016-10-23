@@ -39,3 +39,5 @@ import:
   - assert
   - require
 - package: github.com/linkeddata/gojsonld
+- package: github.com/spf13/viper
+- package: github.com/spf13/cobra

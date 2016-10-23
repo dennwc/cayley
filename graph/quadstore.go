@@ -203,10 +203,12 @@ func NewQuadStore(name, dbpath string, opts Options) (QuadStore, error) {
 
 func InitQuadStore(name, dbpath string, opts Options) error {
 	r, registered := storeRegistry[name]
-	if registered {
-		return r.InitFunc(dbpath, opts)
+	if !registered {
+		return errors.New("quadstore: name '" + name + "' is not registered")
+	} else if r.InitFunc == nil {
+		return nil
 	}
-	return errors.New("quadstore: name '" + name + "' is not registered")
+	return r.InitFunc(dbpath, opts)
 }
 
 func NewQuadStoreForRequest(qs QuadStore, opts Options) (QuadStore, error) {
@@ -228,6 +230,11 @@ func UpgradeQuadStore(name, dbpath string, opts Options) error {
 	}
 	return errors.New("quadstore: name '" + name + "' is not registered")
 
+}
+
+func IsRegistered(name string) bool {
+	_, ok := storeRegistry[name]
+	return ok
 }
 
 func IsPersistent(name string) bool {
