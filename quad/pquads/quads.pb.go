@@ -12,8 +12,10 @@
 		Quad
 		WireQuad
 		StrictQuad
+		Timestamp
 		Value
 		Header
+		Primitive
 */
 package pquads
 
@@ -34,6 +36,33 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+
+type Primitive_Type int32
+
+const (
+	Primitive_UNKNOWN   Primitive_Type = 0
+	Primitive_QUAD      Primitive_Type = 1
+	Primitive_NODE      Primitive_Type = 2
+	Primitive_TOMBSTONE Primitive_Type = 3
+)
+
+var Primitive_Type_name = map[int32]string{
+	0: "UNKNOWN",
+	1: "QUAD",
+	2: "NODE",
+	3: "TOMBSTONE",
+}
+var Primitive_Type_value = map[string]int32{
+	"UNKNOWN":   0,
+	"QUAD":      1,
+	"NODE":      2,
+	"TOMBSTONE": 3,
+}
+
+func (x Primitive_Type) String() string {
+	return proto.EnumName(Primitive_Type_name, int32(x))
+}
+func (Primitive_Type) EnumDescriptor() ([]byte, []int) { return fileDescriptorQuads, []int{6, 0} }
 
 // Quad is in internal representation of quad used by Cayley.
 type Quad struct {
@@ -277,6 +306,17 @@ func _StrictQuad_Ref_OneofSizer(msg proto.Message) (n int) {
 	return n
 }
 
+// From https://github.com/golang/protobuf/blob/master/ptypes/timestamp/timestamp.proto
+type Timestamp struct {
+	Seconds int64 `protobuf:"varint,1,opt,name=seconds,proto3" json:"seconds,omitempty"`
+	Nanos   int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
+}
+
+func (m *Timestamp) Reset()                    { *m = Timestamp{} }
+func (m *Timestamp) String() string            { return proto.CompactTextString(m) }
+func (*Timestamp) ProtoMessage()               {}
+func (*Timestamp) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{3} }
+
 type Value struct {
 	// Types that are valid to be assigned to Value:
 	//	*Value_Raw
@@ -295,7 +335,7 @@ type Value struct {
 func (m *Value) Reset()                    { *m = Value{} }
 func (m *Value) String() string            { return proto.CompactTextString(m) }
 func (*Value) ProtoMessage()               {}
-func (*Value) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{3} }
+func (*Value) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{4} }
 
 type isValue_Value interface {
 	isValue_Value()
@@ -331,7 +371,7 @@ type Value_Boolean struct {
 	Boolean bool `protobuf:"varint,9,opt,name=boolean,proto3,oneof"`
 }
 type Value_Time struct {
-	Time *Value_Timestamp `protobuf:"bytes,10,opt,name=time,oneof"`
+	Time *Timestamp `protobuf:"bytes,10,opt,name=time,oneof"`
 }
 
 func (*Value_Raw) isValue_Value()      {}
@@ -415,7 +455,7 @@ func (m *Value) GetBoolean() bool {
 	return false
 }
 
-func (m *Value) GetTime() *Value_Timestamp {
+func (m *Value) GetTime() *Timestamp {
 	if x, ok := m.GetValue().(*Value_Time); ok {
 		return x.Time
 	}
@@ -561,7 +601,7 @@ func _Value_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) 
 		if wire != proto.WireBytes {
 			return true, proto.ErrInternalBadWireType
 		}
-		msg := new(Value_Timestamp)
+		msg := new(Timestamp)
 		err := b.DecodeMessage(msg)
 		m.Value = &Value_Time{msg}
 		return true, err
@@ -629,7 +669,7 @@ type Value_TypedString struct {
 func (m *Value_TypedString) Reset()                    { *m = Value_TypedString{} }
 func (m *Value_TypedString) String() string            { return proto.CompactTextString(m) }
 func (*Value_TypedString) ProtoMessage()               {}
-func (*Value_TypedString) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{3, 0} }
+func (*Value_TypedString) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{4, 0} }
 
 type Value_LangString struct {
 	Value string `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
@@ -639,18 +679,7 @@ type Value_LangString struct {
 func (m *Value_LangString) Reset()                    { *m = Value_LangString{} }
 func (m *Value_LangString) String() string            { return proto.CompactTextString(m) }
 func (*Value_LangString) ProtoMessage()               {}
-func (*Value_LangString) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{3, 1} }
-
-// From https://github.com/golang/protobuf/blob/master/ptypes/timestamp/timestamp.proto
-type Value_Timestamp struct {
-	Seconds int64 `protobuf:"varint,1,opt,name=seconds,proto3" json:"seconds,omitempty"`
-	Nanos   int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
-}
-
-func (m *Value_Timestamp) Reset()                    { *m = Value_Timestamp{} }
-func (m *Value_Timestamp) String() string            { return proto.CompactTextString(m) }
-func (*Value_Timestamp) ProtoMessage()               {}
-func (*Value_Timestamp) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{3, 2} }
+func (*Value_LangString) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{4, 1} }
 
 type Header struct {
 	// Full is set if encoder always writes every quad directions instead of
@@ -663,18 +692,52 @@ type Header struct {
 func (m *Header) Reset()                    { *m = Header{} }
 func (m *Header) String() string            { return proto.CompactTextString(m) }
 func (*Header) ProtoMessage()               {}
-func (*Header) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{4} }
+func (*Header) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{5} }
+
+type Primitive struct {
+	Id        uint64         `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Subject   uint64         `protobuf:"varint,2,opt,name=subject,proto3" json:"subject,omitempty"`
+	Predicate uint64         `protobuf:"varint,3,opt,name=predicate,proto3" json:"predicate,omitempty"`
+	Object    uint64         `protobuf:"varint,4,opt,name=object,proto3" json:"object,omitempty"`
+	Label     uint64         `protobuf:"varint,5,opt,name=label,proto3" json:"label,omitempty"`
+	Value     *Value         `protobuf:"bytes,6,opt,name=value" json:"value,omitempty"`
+	Type      Primitive_Type `protobuf:"varint,7,opt,name=type,proto3,enum=pquads.Primitive_Type" json:"type,omitempty"`
+	SameAs    uint64         `protobuf:"varint,8,opt,name=same_as,json=sameAs,proto3" json:"same_as,omitempty"`
+	Replaces  uint64         `protobuf:"varint,9,opt,name=replaces,proto3" json:"replaces,omitempty"`
+	Ts        *Timestamp     `protobuf:"bytes,10,opt,name=ts" json:"ts,omitempty"`
+}
+
+func (m *Primitive) Reset()                    { *m = Primitive{} }
+func (m *Primitive) String() string            { return proto.CompactTextString(m) }
+func (*Primitive) ProtoMessage()               {}
+func (*Primitive) Descriptor() ([]byte, []int) { return fileDescriptorQuads, []int{6} }
+
+func (m *Primitive) GetValue() *Value {
+	if m != nil {
+		return m.Value
+	}
+	return nil
+}
+
+func (m *Primitive) GetTs() *Timestamp {
+	if m != nil {
+		return m.Ts
+	}
+	return nil
+}
 
 func init() {
 	proto.RegisterType((*Quad)(nil), "pquads.Quad")
 	proto.RegisterType((*WireQuad)(nil), "pquads.WireQuad")
 	proto.RegisterType((*StrictQuad)(nil), "pquads.StrictQuad")
 	proto.RegisterType((*StrictQuad_Ref)(nil), "pquads.StrictQuad.Ref")
+	proto.RegisterType((*Timestamp)(nil), "pquads.Timestamp")
 	proto.RegisterType((*Value)(nil), "pquads.Value")
 	proto.RegisterType((*Value_TypedString)(nil), "pquads.Value.TypedString")
 	proto.RegisterType((*Value_LangString)(nil), "pquads.Value.LangString")
-	proto.RegisterType((*Value_Timestamp)(nil), "pquads.Value.Timestamp")
 	proto.RegisterType((*Header)(nil), "pquads.Header")
+	proto.RegisterType((*Primitive)(nil), "pquads.Primitive")
+	proto.RegisterEnum("pquads.Primitive_Type", Primitive_Type_name, Primitive_Type_value)
 }
 func (m *Quad) Marshal() (data []byte, err error) {
 	size := m.ProtoSize()
@@ -915,6 +978,34 @@ func (m *StrictQuad_Ref_Iri) MarshalTo(data []byte) (int, error) {
 	i += copy(data[i:], m.Iri)
 	return i, nil
 }
+func (m *Timestamp) Marshal() (data []byte, err error) {
+	size := m.ProtoSize()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *Timestamp) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		data[i] = 0x10
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Nanos))
+	}
+	return i, nil
+}
+
 func (m *Value) Marshal() (data []byte, err error) {
 	size := m.ProtoSize()
 	data = make([]byte, size)
@@ -1102,34 +1193,6 @@ func (m *Value_LangString) MarshalTo(data []byte) (int, error) {
 	return i, nil
 }
 
-func (m *Value_Timestamp) Marshal() (data []byte, err error) {
-	size := m.ProtoSize()
-	data = make([]byte, size)
-	n, err := m.MarshalTo(data)
-	if err != nil {
-		return nil, err
-	}
-	return data[:n], nil
-}
-
-func (m *Value_Timestamp) MarshalTo(data []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if m.Seconds != 0 {
-		data[i] = 0x8
-		i++
-		i = encodeVarintQuads(data, i, uint64(m.Seconds))
-	}
-	if m.Nanos != 0 {
-		data[i] = 0x10
-		i++
-		i = encodeVarintQuads(data, i, uint64(m.Nanos))
-	}
-	return i, nil
-}
-
 func (m *Header) Marshal() (data []byte, err error) {
 	size := m.ProtoSize()
 	data = make([]byte, size)
@@ -1164,6 +1227,84 @@ func (m *Header) MarshalTo(data []byte) (int, error) {
 			data[i] = 0
 		}
 		i++
+	}
+	return i, nil
+}
+
+func (m *Primitive) Marshal() (data []byte, err error) {
+	size := m.ProtoSize()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *Primitive) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Id != 0 {
+		data[i] = 0x8
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Id))
+	}
+	if m.Subject != 0 {
+		data[i] = 0x10
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Subject))
+	}
+	if m.Predicate != 0 {
+		data[i] = 0x18
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Predicate))
+	}
+	if m.Object != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Object))
+	}
+	if m.Label != 0 {
+		data[i] = 0x28
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Label))
+	}
+	if m.Value != nil {
+		data[i] = 0x32
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Value.ProtoSize()))
+		n18, err := m.Value.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n18
+	}
+	if m.Type != 0 {
+		data[i] = 0x38
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Type))
+	}
+	if m.SameAs != 0 {
+		data[i] = 0x40
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.SameAs))
+	}
+	if m.Replaces != 0 {
+		data[i] = 0x48
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Replaces))
+	}
+	if m.Ts != nil {
+		data[i] = 0x52
+		i++
+		i = encodeVarintQuads(data, i, uint64(m.Ts.ProtoSize()))
+		n19, err := m.Ts.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n19
 	}
 	return i, nil
 }
@@ -1300,6 +1441,18 @@ func (m *StrictQuad_Ref_Iri) ProtoSize() (n int) {
 	n += 1 + l + sovQuads(uint64(l))
 	return n
 }
+func (m *Timestamp) ProtoSize() (n int) {
+	var l int
+	_ = l
+	if m.Seconds != 0 {
+		n += 1 + sovQuads(uint64(m.Seconds))
+	}
+	if m.Nanos != 0 {
+		n += 1 + sovQuads(uint64(m.Nanos))
+	}
+	return n
+}
+
 func (m *Value) ProtoSize() (n int) {
 	var l int
 	_ = l
@@ -1412,18 +1565,6 @@ func (m *Value_LangString) ProtoSize() (n int) {
 	return n
 }
 
-func (m *Value_Timestamp) ProtoSize() (n int) {
-	var l int
-	_ = l
-	if m.Seconds != 0 {
-		n += 1 + sovQuads(uint64(m.Seconds))
-	}
-	if m.Nanos != 0 {
-		n += 1 + sovQuads(uint64(m.Nanos))
-	}
-	return n
-}
-
 func (m *Header) ProtoSize() (n int) {
 	var l int
 	_ = l
@@ -1432,6 +1573,44 @@ func (m *Header) ProtoSize() (n int) {
 	}
 	if m.NotStrict {
 		n += 2
+	}
+	return n
+}
+
+func (m *Primitive) ProtoSize() (n int) {
+	var l int
+	_ = l
+	if m.Id != 0 {
+		n += 1 + sovQuads(uint64(m.Id))
+	}
+	if m.Subject != 0 {
+		n += 1 + sovQuads(uint64(m.Subject))
+	}
+	if m.Predicate != 0 {
+		n += 1 + sovQuads(uint64(m.Predicate))
+	}
+	if m.Object != 0 {
+		n += 1 + sovQuads(uint64(m.Object))
+	}
+	if m.Label != 0 {
+		n += 1 + sovQuads(uint64(m.Label))
+	}
+	if m.Value != nil {
+		l = m.Value.ProtoSize()
+		n += 1 + l + sovQuads(uint64(l))
+	}
+	if m.Type != 0 {
+		n += 1 + sovQuads(uint64(m.Type))
+	}
+	if m.SameAs != 0 {
+		n += 1 + sovQuads(uint64(m.SameAs))
+	}
+	if m.Replaces != 0 {
+		n += 1 + sovQuads(uint64(m.Replaces))
+	}
+	if m.Ts != nil {
+		l = m.Ts.ProtoSize()
+		n += 1 + l + sovQuads(uint64(l))
 	}
 	return n
 }
@@ -2219,6 +2398,94 @@ func (m *StrictQuad_Ref) Unmarshal(data []byte) error {
 	}
 	return nil
 }
+func (m *Timestamp) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuads
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Timestamp: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Timestamp: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Seconds", wireType)
+			}
+			m.Seconds = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Seconds |= (int64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Nanos", wireType)
+			}
+			m.Nanos = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Nanos |= (int32(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuads(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthQuads
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *Value) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -2514,7 +2781,7 @@ func (m *Value) Unmarshal(data []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			v := &Value_Timestamp{}
+			v := &Timestamp{}
 			if err := v.Unmarshal(data[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -2757,94 +3024,6 @@ func (m *Value_LangString) Unmarshal(data []byte) error {
 	}
 	return nil
 }
-func (m *Value_Timestamp) Unmarshal(data []byte) error {
-	l := len(data)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowQuads
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := data[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Timestamp: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Timestamp: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Seconds", wireType)
-			}
-			m.Seconds = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowQuads
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Seconds |= (int64(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Nanos", wireType)
-			}
-			m.Nanos = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowQuads
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := data[iNdEx]
-				iNdEx++
-				m.Nanos |= (int32(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipQuads(data[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthQuads
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *Header) Unmarshal(data []byte) error {
 	l := len(data)
 	iNdEx := 0
@@ -2914,6 +3093,274 @@ func (m *Header) Unmarshal(data []byte) error {
 				}
 			}
 			m.NotStrict = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuads(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthQuads
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Primitive) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuads
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Primitive: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Primitive: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.Id = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Id |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Subject", wireType)
+			}
+			m.Subject = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Subject |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Predicate", wireType)
+			}
+			m.Predicate = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Predicate |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Object", wireType)
+			}
+			m.Object = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Object |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Label", wireType)
+			}
+			m.Label = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Label |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuads
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Value == nil {
+				m.Value = &Value{}
+			}
+			if err := m.Value.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			m.Type = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Type |= (Primitive_Type(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SameAs", wireType)
+			}
+			m.SameAs = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.SameAs |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Replaces", wireType)
+			}
+			m.Replaces = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Replaces |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Ts", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuads
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuads
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Ts == nil {
+				m.Ts = &Timestamp{}
+			}
+			if err := m.Ts.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipQuads(data[iNdEx:])
@@ -3043,44 +3490,54 @@ var (
 func init() { proto.RegisterFile("quads.proto", fileDescriptorQuads) }
 
 var fileDescriptorQuads = []byte{
-	// 620 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x54, 0xcd, 0x6e, 0xd3, 0x40,
-	0x10, 0xc6, 0xb1, 0x9d, 0xd8, 0xe3, 0x14, 0xd0, 0x0a, 0x15, 0x63, 0x41, 0x05, 0x41, 0x08, 0x24,
-	0xa8, 0x5b, 0x15, 0x28, 0x48, 0xbd, 0xf5, 0x54, 0x41, 0x2f, 0x18, 0x04, 0xc7, 0x6a, 0x1d, 0x6f,
-	0x82, 0x91, 0xb3, 0x1b, 0xec, 0x35, 0x88, 0x17, 0xe1, 0xcc, 0x03, 0xf0, 0x04, 0x3c, 0x01, 0x47,
-	0x9e, 0x01, 0xde, 0x82, 0x13, 0xbb, 0xb3, 0x8e, 0xf3, 0x7f, 0xe0, 0x10, 0x69, 0xbf, 0x99, 0xf9,
-	0x66, 0xbf, 0x99, 0x7c, 0x5e, 0x08, 0x3e, 0xd6, 0x34, 0xab, 0xe2, 0x69, 0x29, 0xa4, 0x20, 0xdd,
-	0x29, 0xa2, 0x68, 0x7f, 0x9c, 0xcb, 0xf7, 0x75, 0x1a, 0x0f, 0xc5, 0xe4, 0x60, 0x2c, 0xc6, 0xe2,
-	0x00, 0xd3, 0x69, 0x3d, 0x42, 0x84, 0x00, 0x4f, 0x86, 0x36, 0xf8, 0xd1, 0x01, 0xe7, 0x95, 0x22,
-	0x92, 0x10, 0x7a, 0x55, 0x9d, 0x7e, 0x60, 0x43, 0x19, 0x5a, 0xb7, 0xad, 0x07, 0x7e, 0x32, 0x83,
-	0xe4, 0x26, 0xf8, 0xd3, 0x92, 0x65, 0xf9, 0x90, 0x4a, 0x16, 0x76, 0x30, 0x37, 0x0f, 0x90, 0x5d,
-	0xe8, 0x0a, 0x43, 0xb3, 0x31, 0xd5, 0x20, 0x72, 0x0d, 0xdc, 0x82, 0xa6, 0xac, 0x08, 0x1d, 0x0c,
-	0x1b, 0x40, 0x8e, 0x60, 0xa7, 0x69, 0x7b, 0xf1, 0x89, 0x16, 0x35, 0x0b, 0x5d, 0x95, 0x0d, 0x8e,
-	0x76, 0x62, 0xa3, 0x3e, 0x7e, 0xab, 0x83, 0x49, 0xbf, 0xa9, 0x41, 0x44, 0x8e, 0xe1, 0x4a, 0x7b,
-	0x5d, 0xc3, 0xea, 0x6e, 0x62, 0x5d, 0x6e, 0xab, 0x0c, 0xef, 0x10, 0xfa, 0x62, 0xf1, 0xaa, 0xde,
-	0x26, 0x52, 0x20, 0x16, 0x6e, 0x8a, 0x21, 0x40, 0x99, 0x0d, 0xc1, 0xdb, 0x44, 0x00, 0xac, 0xc0,
-	0xf3, 0xe0, 0xbb, 0x05, 0xde, 0xbb, 0xbc, 0x64, 0xb8, 0xc0, 0xfb, 0xcb, 0x0b, 0x5c, 0x23, 0xb6,
-	0xfb, 0x7c, 0xb8, 0xba, 0xcf, 0xb5, 0xd2, 0x85, 0xf5, 0xde, 0x5b, 0x5a, 0xef, 0x5a, 0xe5, 0x6c,
-	0xdb, 0x77, 0x17, 0xb7, 0xbd, 0x56, 0x65, 0x72, 0x83, 0xaf, 0x1d, 0x80, 0xd7, 0xb2, 0xcc, 0x87,
-	0x12, 0x05, 0x1f, 0xae, 0x0a, 0xde, 0x9d, 0xb1, 0xe6, 0x45, 0x71, 0xc2, 0x46, 0x73, 0xe5, 0x4f,
-	0xd6, 0x95, 0x6f, 0xe3, 0xfc, 0xff, 0x08, 0x8f, 0x96, 0x47, 0xd8, 0xd6, 0xd8, 0x14, 0x45, 0x2f,
-	0xc1, 0x56, 0x88, 0xdc, 0x81, 0x20, 0xe5, 0x22, 0x63, 0x17, 0x86, 0x8a, 0xee, 0x3c, 0xbb, 0x94,
-	0x00, 0x06, 0xcf, 0xd1, 0x72, 0x04, 0xec, 0xbc, 0xcc, 0x8d, 0x3b, 0x55, 0x4a, 0x83, 0xd3, 0x1e,
-	0xb8, 0xf8, 0x17, 0xbf, 0x70, 0x3c, 0xeb, 0x6a, 0x67, 0xf0, 0xd7, 0x06, 0xd7, 0x38, 0x40, 0x15,
-	0x97, 0xf4, 0x33, 0xee, 0xa3, 0xaf, 0x8b, 0x15, 0xd0, 0xb1, 0x4a, 0x96, 0x6d, 0x6f, 0x0d, 0x36,
-	0x35, 0x55, 0x5f, 0x82, 0x8b, 0xd7, 0x1a, 0xc7, 0xab, 0xa8, 0x81, 0xe4, 0x39, 0xf8, 0xf2, 0xcb,
-	0x94, 0x65, 0x17, 0xba, 0x8b, 0xf1, 0xfb, 0x8d, 0xa5, 0x15, 0xc4, 0x6f, 0x74, 0x5a, 0xcf, 0xc9,
-	0xc7, 0x8a, 0xe6, 0xc9, 0x06, 0x92, 0xa7, 0xe0, 0x15, 0x94, 0x8f, 0x91, 0x68, 0x2c, 0x1f, 0x2e,
-	0x13, 0xcf, 0x55, 0xb6, 0xe5, 0xf5, 0x0a, 0x83, 0x50, 0x1c, 0x97, 0xe8, 0x77, 0x1b, 0xc5, 0x71,
-	0xa9, 0xc5, 0x8d, 0x0a, 0x41, 0x25, 0x9a, 0xda, 0xd2, 0xe2, 0x10, 0x92, 0x08, 0x7a, 0xa9, 0x10,
-	0x05, 0xa3, 0x3c, 0xf4, 0x55, 0xc6, 0xd3, 0x7d, 0x9a, 0x00, 0xd9, 0x07, 0x47, 0xe6, 0x13, 0x16,
-	0x02, 0x5e, 0x7d, 0x7d, 0x45, 0xb3, 0xca, 0x54, 0x92, 0x4e, 0xa6, 0x8a, 0x81, 0x65, 0xd1, 0x33,
-	0x08, 0x16, 0x06, 0xd1, 0x0f, 0x80, 0xf9, 0x8c, 0xcc, 0x73, 0x62, 0x80, 0xd2, 0xe6, 0xe8, 0xf1,
-	0x9a, 0x77, 0x04, 0xcf, 0xd1, 0x31, 0xc0, 0x7c, 0x90, 0xed, 0x3c, 0x3d, 0xde, 0x8c, 0xa7, 0xcf,
-	0xd1, 0x09, 0xf8, 0xad, 0x0a, 0x7c, 0xbf, 0xd8, 0x50, 0xf0, 0xac, 0x42, 0xa2, 0x9d, 0xcc, 0xa0,
-	0x6e, 0xc8, 0x29, 0x17, 0x15, 0x72, 0xdd, 0xc4, 0x80, 0xd6, 0x02, 0x83, 0x13, 0xe8, 0x9e, 0x31,
-	0x9a, 0x31, 0xbd, 0x37, 0x67, 0x54, 0x17, 0x05, 0xf2, 0xbd, 0x04, 0xcf, 0xe4, 0x16, 0x00, 0x17,
-	0x52, 0xff, 0x03, 0xca, 0x84, 0xd8, 0xc1, 0x4b, 0x7c, 0x15, 0x31, 0xae, 0x3c, 0xed, 0xff, 0xfc,
-	0xbd, 0x67, 0xfd, 0x52, 0xbf, 0x6f, 0x7f, 0xf6, 0xac, 0xb4, 0x8b, 0x6f, 0xea, 0xe3, 0x7f, 0x01,
-	0x00, 0x00, 0xff, 0xff, 0xd8, 0x36, 0x01, 0x85, 0x99, 0x05, 0x00, 0x00,
+	// 780 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x55, 0xcd, 0x6e, 0xd3, 0x4a,
+	0x14, 0xae, 0x7f, 0x92, 0x38, 0x27, 0x69, 0x6f, 0xee, 0xe8, 0xaa, 0xd7, 0x44, 0x50, 0x41, 0x2a,
+	0x04, 0xe2, 0x27, 0xad, 0x0a, 0x14, 0x24, 0x56, 0xad, 0x5a, 0xa9, 0xa2, 0x25, 0x01, 0xb7, 0xa5,
+	0xcb, 0x68, 0x92, 0x4c, 0x82, 0x91, 0xe3, 0x09, 0xf6, 0xa4, 0x88, 0x17, 0x61, 0xcd, 0x03, 0xb0,
+	0x47, 0xe2, 0x09, 0x58, 0xf2, 0x0c, 0xe5, 0x45, 0x98, 0x39, 0x63, 0x3b, 0x49, 0xe3, 0x2c, 0x58,
+	0x44, 0x9a, 0xef, 0x9c, 0xf3, 0xf9, 0x7c, 0xf3, 0xcd, 0x9c, 0x09, 0x54, 0x3e, 0x4e, 0x68, 0x3f,
+	0x6e, 0x8e, 0x23, 0x2e, 0x38, 0x29, 0x8e, 0x11, 0xd5, 0x1f, 0x0f, 0x7d, 0xf1, 0x7e, 0xd2, 0x6d,
+	0xf6, 0xf8, 0x68, 0x6b, 0xc8, 0x87, 0x7c, 0x0b, 0xd3, 0xdd, 0xc9, 0x00, 0x11, 0x02, 0x5c, 0x69,
+	0x5a, 0xe3, 0x87, 0x09, 0xf6, 0x5b, 0x49, 0x24, 0x2e, 0x94, 0xe2, 0x49, 0xf7, 0x03, 0xeb, 0x09,
+	0xd7, 0xb8, 0x6d, 0xdc, 0x2f, 0x7b, 0x29, 0x24, 0x37, 0xa1, 0x3c, 0x8e, 0x58, 0xdf, 0xef, 0x51,
+	0xc1, 0x5c, 0x13, 0x73, 0xd3, 0x00, 0x59, 0x87, 0x22, 0xd7, 0x34, 0x0b, 0x53, 0x09, 0x22, 0xff,
+	0x41, 0x21, 0xa0, 0x5d, 0x16, 0xb8, 0x36, 0x86, 0x35, 0x20, 0x3b, 0xb0, 0x9a, 0x7c, 0xb6, 0x73,
+	0x49, 0x83, 0x09, 0x73, 0x0b, 0x32, 0x5b, 0xd9, 0x59, 0x6d, 0x6a, 0xf5, 0xcd, 0x77, 0x2a, 0xe8,
+	0x55, 0x93, 0x1a, 0x44, 0x64, 0x17, 0xfe, 0xc9, 0xda, 0x25, 0xac, 0x62, 0x1e, 0x6b, 0x2d, 0xab,
+	0xd2, 0xbc, 0x6d, 0xa8, 0xf2, 0xd9, 0x56, 0xa5, 0x3c, 0x52, 0x85, 0xcf, 0x74, 0x6a, 0x42, 0x05,
+	0x65, 0x26, 0x04, 0x27, 0x8f, 0x00, 0x58, 0x81, 0xeb, 0xc6, 0x37, 0x03, 0x9c, 0x0b, 0x3f, 0x62,
+	0x68, 0xe0, 0xbd, 0x79, 0x03, 0x17, 0x88, 0x99, 0x9f, 0x0f, 0xaf, 0xfb, 0xb9, 0x50, 0x3a, 0x63,
+	0xef, 0xdd, 0x39, 0x7b, 0x17, 0x2a, 0x53, 0xb7, 0x37, 0x67, 0xdd, 0x5e, 0xa8, 0xd2, 0xb9, 0xc6,
+	0x17, 0x13, 0xe0, 0x54, 0x44, 0x7e, 0x4f, 0xa0, 0xe0, 0xed, 0xeb, 0x82, 0xd7, 0x53, 0xd6, 0xb4,
+	0xa8, 0xe9, 0xb1, 0xc1, 0x54, 0xf9, 0xd3, 0x45, 0xe5, 0xcb, 0x38, 0x7f, 0xbf, 0x85, 0x47, 0xf3,
+	0x5b, 0x58, 0xf6, 0x61, 0x5d, 0x54, 0x3f, 0x06, 0x4b, 0x22, 0x72, 0x07, 0x2a, 0xdd, 0x90, 0xf7,
+	0x59, 0x47, 0x53, 0xf1, 0x76, 0x1e, 0xad, 0x78, 0x80, 0xc1, 0x13, 0xbc, 0x72, 0x04, 0x2c, 0x3f,
+	0xf2, 0xf5, 0xed, 0x94, 0x29, 0x05, 0xf6, 0x4b, 0x50, 0xc0, 0x23, 0x7e, 0x65, 0x3b, 0x46, 0xcd,
+	0x6c, 0xbc, 0x84, 0xf2, 0x99, 0x3f, 0x62, 0xb1, 0xa0, 0xa3, 0x31, 0x0e, 0x02, 0xeb, 0xf1, 0xb0,
+	0x1f, 0xa3, 0x2d, 0x96, 0x97, 0x42, 0x75, 0xa5, 0x43, 0x1a, 0xf2, 0x18, 0xdb, 0x14, 0x3c, 0x0d,
+	0x1a, 0xdf, 0x2d, 0x28, 0xe8, 0xeb, 0x23, 0x3b, 0x45, 0xf4, 0x13, 0xb2, 0xaa, 0xaa, 0x93, 0x04,
+	0x2a, 0x16, 0x8b, 0x28, 0x13, 0xa6, 0x40, 0x9e, 0x22, 0x39, 0x46, 0x05, 0xd4, 0xac, 0xc7, 0x45,
+	0x46, 0x35, 0x24, 0x2f, 0xa0, 0x2c, 0x3e, 0x8f, 0x59, 0xbf, 0xa3, 0xbe, 0xa2, 0x87, 0xe5, 0xc6,
+	0x9c, 0x7f, 0xcd, 0x33, 0x95, 0x56, 0x26, 0x85, 0x43, 0x49, 0x73, 0x44, 0x02, 0xc9, 0x33, 0x70,
+	0x02, 0x1a, 0x0e, 0x91, 0xa8, 0xe7, 0xc5, 0x9d, 0x27, 0x9e, 0xc8, 0x6c, 0xc6, 0x2b, 0x05, 0x1a,
+	0xa1, 0xb8, 0x50, 0xe0, 0xb0, 0x58, 0x28, 0x2e, 0x14, 0x4a, 0xdc, 0x20, 0xe0, 0x54, 0xe0, 0x44,
+	0x18, 0x4a, 0x1c, 0x42, 0x52, 0x87, 0x52, 0x97, 0xf3, 0x80, 0xd1, 0xd0, 0x2d, 0xcb, 0x8c, 0xa3,
+	0xbe, 0x93, 0x04, 0xe4, 0x38, 0xd8, 0x42, 0x7a, 0xea, 0x02, 0xb6, 0xfe, 0x37, 0x6d, 0x9d, 0xf9,
+	0x2c, 0x6b, 0xb1, 0xa0, 0xfe, 0x1c, 0x2a, 0x33, 0x5b, 0x50, 0x26, 0xeb, 0xe9, 0xd3, 0xaf, 0x90,
+	0x06, 0x52, 0x95, 0xad, 0x36, 0x96, 0x3c, 0x3f, 0xb8, 0xae, 0xef, 0x02, 0x4c, 0xb7, 0xb0, 0x9c,
+	0xa7, 0x36, 0x96, 0xf2, 0xd4, 0x3a, 0x3b, 0x7c, 0x79, 0xec, 0xc5, 0x23, 0x46, 0xfb, 0x4c, 0x6d,
+	0xda, 0x1e, 0x4c, 0x82, 0x00, 0xb9, 0x8e, 0x87, 0x6b, 0x72, 0x0b, 0x20, 0xe4, 0x42, 0xd9, 0x27,
+	0xaf, 0x1f, 0x7e, 0xc0, 0xf1, 0xca, 0x32, 0xa2, 0xef, 0x63, 0xe3, 0xca, 0x84, 0xf2, 0x9b, 0xc8,
+	0x1f, 0xf9, 0xc2, 0xbf, 0x64, 0x64, 0x0d, 0x4c, 0xbf, 0x8f, 0x74, 0xdb, 0x93, 0xab, 0xd9, 0xd7,
+	0xd4, 0xc4, 0x60, 0xfe, 0x6b, 0x6a, 0x61, 0x2e, 0xf7, 0x35, 0xb5, 0x31, 0xb5, 0xf0, 0x9a, 0x16,
+	0x30, 0x9c, 0xbc, 0xa6, 0x9b, 0xe9, 0x9e, 0x73, 0xdf, 0xc3, 0xc4, 0x82, 0x07, 0x89, 0x75, 0xea,
+	0x44, 0xd7, 0xa6, 0x63, 0x95, 0x69, 0xc7, 0x0b, 0xa4, 0x2d, 0x25, 0xff, 0x4b, 0xd9, 0x74, 0xc4,
+	0x3a, 0x34, 0xc6, 0xa3, 0x96, 0xfd, 0x15, 0xdc, 0x8b, 0xe5, 0x49, 0x3b, 0x11, 0x1b, 0x07, 0xb4,
+	0xc7, 0x62, 0x3c, 0x6a, 0xdb, 0xcb, 0xb0, 0x9c, 0x41, 0x53, 0xc4, 0x4b, 0xcf, 0xd9, 0x93, 0xc9,
+	0xc6, 0x2e, 0xd8, 0xaa, 0x0b, 0xa9, 0x40, 0xe9, 0xbc, 0x75, 0xdc, 0x6a, 0x5f, 0xb4, 0x6a, 0x2b,
+	0xc4, 0x91, 0xff, 0x3c, 0xe7, 0x7b, 0x07, 0x35, 0x43, 0xad, 0x5a, 0xed, 0x83, 0xc3, 0x9a, 0x49,
+	0x56, 0xe5, 0x24, 0xb6, 0x5f, 0xef, 0x9f, 0x9e, 0xb5, 0x5b, 0x87, 0x35, 0x6b, 0xbf, 0xfa, 0xf3,
+	0x6a, 0xc3, 0xf8, 0x25, 0x7f, 0x5f, 0x7f, 0x6f, 0x18, 0xdd, 0x22, 0xfe, 0x65, 0x3d, 0xf9, 0x13,
+	0x00, 0x00, 0xff, 0xff, 0xee, 0x1f, 0x33, 0x0b, 0xf8, 0x06, 0x00, 0x00,
 }

@@ -9,6 +9,15 @@ import (
 
 //go:generate protoc --proto_path=$GOPATH/src:. --gogo_out=. quads.proto
 
+func MakeTimestamp(t time.Time) *Timestamp {
+	seconds := t.Unix()
+	nanos := int32(t.Sub(time.Unix(seconds, 0)))
+	return &Timestamp{
+		Seconds: seconds,
+		Nanos:   nanos,
+	}
+}
+
 // MakeValue converts quad.Value to its protobuf representation.
 func MakeValue(qv quad.Value) *Value {
 	if qv == nil {
@@ -41,12 +50,7 @@ func MakeValue(qv quad.Value) *Value {
 		return &Value{&Value_Boolean{bool(v)}}
 	case quad.Time:
 		t := time.Time(v)
-		seconds := t.Unix()
-		nanos := int32(t.Sub(time.Unix(seconds, 0)))
-		return &Value{&Value_Time{&Value_Timestamp{
-			Seconds: seconds,
-			Nanos:   nanos,
-		}}}
+		return &Value{&Value_Time{MakeTimestamp(t)}}
 	default:
 		panic(fmt.Errorf("unsupported type: %T", qv))
 	}

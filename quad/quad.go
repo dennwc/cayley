@@ -154,6 +154,14 @@ const (
 
 var Directions = []Direction{Subject, Predicate, Object, Label}
 
+var DefaultIndexes = [][4]Direction{
+	{Subject, Predicate, Object, Label}, // forward quad index
+	{Object, Predicate, Subject, Label}, // reverse quad index
+	{Predicate, Subject, Object, Label},
+
+	{Label, Subject, Predicate, Object}, // forward quad index for label
+}
+
 func (d Direction) Prefix() byte {
 	switch d {
 	case Any:

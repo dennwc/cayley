@@ -55,4 +55,6 @@ const (
 	Rest = Prefix + `rest`
 	// The datatype of XML literal values.
 	XMLLiteral = Prefix + `XMLLiteral`
+
+	SameAs = Prefix + `sameAs`
 )

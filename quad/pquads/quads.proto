@@ -59,6 +59,12 @@ message StrictQuad {
   Ref   label     = 4;
 }
 
+// From https://github.com/golang/protobuf/blob/master/ptypes/timestamp/timestamp.proto
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
 message Value {
   message TypedString {
     string value = 1;
@@ -67,11 +73,6 @@ message Value {
   message LangString {
     string value = 1;
     string lang = 2;
-  }
-  // From https://github.com/golang/protobuf/blob/master/ptypes/timestamp/timestamp.proto
-  message Timestamp {
-    int64 seconds = 1;
-    int32 nanos = 2;
   }
   oneof value {
     bytes  raw = 1;
@@ -93,4 +94,23 @@ message Header {
   bool full = 1;
   // NotStrict is set if encoder emits WireQuad instead of StrictQuad messages.
   bool not_strict = 2;
+}
+
+message Primitive {
+  enum Type {
+    UNKNOWN = 0;
+    QUAD = 1;
+    NODE = 2;
+    TOMBSTONE = 3;
+  }
+  uint64 id = 1;
+  uint64 subject = 2;
+  uint64 predicate = 3;
+  uint64 object = 4;
+  uint64 label = 5;
+  Value  value = 6;
+  Type   type = 7;
+  uint64 same_as = 8;
+  uint64 replaces = 9;
+  Timestamp ts = 10;
 }
