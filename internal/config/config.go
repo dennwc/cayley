@@ -32,6 +32,8 @@ type Config struct {
 	ListenHost                 string
 	ListenPort                 string
 	ReadOnly                   bool
+	HostUI                     bool
+	HostDocs                   bool
 	Timeout                    time.Duration
 	LoadSize                   int
 	RequiresHTTPRequestContext bool
@@ -46,6 +48,8 @@ type config struct {
 	ListenHost                 string                 `json:"listen_host"`
 	ListenPort                 string                 `json:"listen_port"`
 	ReadOnly                   bool                   `json:"read_only"`
+	HostUI                     bool                   `json:"host_ui"`
+	HostDocs                   bool                   `json:"host_docs"`
 	Timeout                    duration               `json:"timeout"`
 	LoadSize                   int                    `json:"load_size"`
 	RequiresHTTPRequestContext bool                   `json:"http_request_context"`
@@ -66,6 +70,8 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		ListenHost:                 t.ListenHost,
 		ListenPort:                 t.ListenPort,
 		ReadOnly:                   t.ReadOnly,
+		HostUI:                     t.HostUI,
+		HostDocs:                   t.HostDocs,
 		Timeout:                    time.Duration(t.Timeout),
 		LoadSize:                   t.LoadSize,
 		RequiresHTTPRequestContext: t.RequiresHTTPRequestContext,
@@ -83,6 +89,8 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		ListenHost:         c.ListenHost,
 		ListenPort:         c.ListenPort,
 		ReadOnly:           c.ReadOnly,
+		HostUI:             c.HostUI,
+		HostDocs:           c.HostDocs,
 		Timeout:            duration(c.Timeout),
 		LoadSize:           c.LoadSize,
 	})

@@ -20,6 +20,10 @@ const (
 	KeyPath     = "store.path"
 	KeyReadOnly = "store.read_only"
 	KeyOptions  = "store.options"
+
+	// http
+	KeyHostUI   = "host_ui"
+	KeyHostDocs = "host_docs"
 )
 
 const (

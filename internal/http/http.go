@@ -152,9 +152,21 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 
 	//m.Use(martini.Static("static", martini.StaticOptions{Prefix: "/static", SkipLogging: true}))
 	//r.Handler("GET", "/static", http.StripPrefix("/static", http.FileServer(http.Dir("static/"))))
-	r.GET("/docs/:docpage", docs.ServeHTTP)
-	r.GET("/ui/:ui_type", root.ServeHTTP)
-	r.GET("/", root.ServeHTTP)
-	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
-	http.Handle("/", r)
+
+	// only show docs when allowed
+	if cfg.HostDocs {
+		r.GET("/docs/:docpage", docs.ServeHTTP)
+	}
+
+	// only show UI when allowed
+	if cfg.HostUI {
+		r.GET("/ui/:ui_type", root.ServeHTTP)
+		r.GET("/", root.ServeHTTP)
+	}
+
+	// enable static assets when docs or UI is enabled
+	if cfg.HostUI || cfg.HostDocs {
+		http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
+		http.Handle("/", r)
+	}
 }

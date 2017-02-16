@@ -50,12 +50,15 @@ func NewHttpCmd() *cobra.Command {
 			chttp.SetupRoutes(h, &config.Config{
 				Timeout:  timeout,
 				ReadOnly: ro,
+				HostUI: viper.GetBool(KeyHostUI),
+				HostDocs: viper.GetBool(KeyHostDocs),
 			})
 			host, _ := cmd.Flags().GetString("host")
 			phost := host
 			if host, port, err := net.SplitHostPort(host); err == nil && host == "" {
 				phost = net.JoinHostPort("localhost", port)
 			}
+
 			clog.Infof("listening on %s, web interface at http://%s", host, phost)
 			return http.ListenAndServe(host, nil)
 		},
