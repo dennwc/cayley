@@ -4,7 +4,8 @@ import (
 	"net"
 	"net/http"
 	"time"
-
+	"fmt"
+	
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -13,6 +14,13 @@ import (
 	"github.com/cayleygraph/cayley/internal/config"
 	chttp "github.com/cayleygraph/cayley/internal/http"
 	"github.com/cayleygraph/cayley/quad"
+
+)
+
+const (
+	// http
+	KeyHostUI   = "host_ui"
+	KeyHostDocs = "host_docs"
 )
 
 func NewHttpCmd() *cobra.Command {
@@ -40,8 +48,12 @@ func NewHttpCmd() *cobra.Command {
 
 			ro := viper.GetBool(KeyReadOnly)
 			if load, _ := cmd.Flags().GetString(flagLoad); load != "" {
+				// don't allow load when config is readonly
+				if ro {
+					return fmt.Errorf("Can not load into database, read only configuration or flag specified")
+				}
+
 				typ, _ := cmd.Flags().GetString(flagLoadFormat)
-				// TODO: check read-only flag in config before that?
 				if err = internal.Load(h.QuadWriter, quad.DefaultBatch, load, typ); err != nil {
 					return err
 				}
