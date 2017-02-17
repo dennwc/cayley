@@ -26,6 +26,7 @@ import (
 
 type DocRequestHandler struct {
 	assets string
+	path   string
 }
 
 func MarkdownWithCSS(input []byte, title string) []byte {

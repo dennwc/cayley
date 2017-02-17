@@ -22,11 +22,10 @@ import (
 	"time"
 
 	"github.com/cayleygraph/cayley/clog"
-	"github.com/julienschmidt/httprouter"
-
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/internal/config"
 	"github.com/cayleygraph/cayley/internal/db"
+	"github.com/julienschmidt/httprouter"
 )
 
 type ResponseHandler func(http.ResponseWriter, *http.Request, httprouter.Params) int
@@ -48,7 +47,7 @@ func findAssetsPath() string {
 		if hasAssets(AssetsPath) {
 			return AssetsPath
 		}
-		clog.Fatalf("Cannot find assets at", AssetsPath, ".")
+		clog.Fatalf("Cannot find assets at %s.", AssetsPath)
 	}
 
 	if hasAssets(".") {
@@ -91,6 +90,7 @@ func jsonResponse(w http.ResponseWriter, code int, err interface{}) int {
 
 type TemplateRequestHandler struct {
 	templates *template.Template
+	path      string
 }
 
 func (h *TemplateRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -145,8 +145,8 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	}
 	var templates = template.Must(template.ParseGlob(fmt.Sprint(assets, "/templates/*.tmpl")))
 	templates.ParseGlob(fmt.Sprint(assets, "/templates/*.html"))
-	root := &TemplateRequestHandler{templates: templates}
-	docs := &DocRequestHandler{assets: assets}
+	root := &TemplateRequestHandler{templates: templates, path: cfg.HostUI}
+	docs := &DocRequestHandler{assets: assets, path: cfg.HostDocs}
 	api := &API{config: cfg, handle: handle}
 	api.APIv1(r)
 
@@ -154,18 +154,18 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	//r.Handler("GET", "/static", http.StripPrefix("/static", http.FileServer(http.Dir("static/"))))
 
 	// only show docs when allowed
-	if cfg.HostDocs {
+	if cfg.HostDocs != "" {
 		r.GET("/docs/:docpage", docs.ServeHTTP)
 	}
 
 	// only show UI when allowed
-	if cfg.HostUI {
+	if cfg.HostUI != "" {
 		r.GET("/ui/:ui_type", root.ServeHTTP)
 		r.GET("/", root.ServeHTTP)
 	}
 
 	// enable static assets when docs or UI is enabled
-	if cfg.HostUI || cfg.HostDocs {
+	if cfg.HostUI != "" || cfg.HostDocs != "" {
 		http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
 		http.Handle("/", r)
 	}

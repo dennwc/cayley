@@ -29,11 +29,10 @@ type Config struct {
 	DatabaseOptions            map[string]interface{}
 	ReplicationType            string
 	ReplicationOptions         map[string]interface{}
-	ListenHost                 string
-	ListenPort                 string
+	Listen                     string
 	ReadOnly                   bool
-	HostUI                     bool
-	HostDocs                   bool
+	HostUI                     string
+	HostDocs                   string
 	Timeout                    time.Duration
 	LoadSize                   int
 	RequiresHTTPRequestContext bool
@@ -45,11 +44,10 @@ type config struct {
 	DatabaseOptions            map[string]interface{} `json:"db_options"`
 	ReplicationType            string                 `json:"replication"`
 	ReplicationOptions         map[string]interface{} `json:"replication_options"`
-	ListenHost                 string                 `json:"listen_host"`
-	ListenPort                 string                 `json:"listen_port"`
+	Listen                     string                 `json:"listen"`
 	ReadOnly                   bool                   `json:"read_only"`
-	HostUI                     bool                   `json:"host_ui"`
-	HostDocs                   bool                   `json:"host_docs"`
+	HostUI                     string                 `json:"host_ui"`
+	HostDocs                   string                 `json:"host_docs"`
 	Timeout                    duration               `json:"timeout"`
 	LoadSize                   int                    `json:"load_size"`
 	RequiresHTTPRequestContext bool                   `json:"http_request_context"`
@@ -67,8 +65,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		DatabaseOptions:            t.DatabaseOptions,
 		ReplicationType:            t.ReplicationType,
 		ReplicationOptions:         t.ReplicationOptions,
-		ListenHost:                 t.ListenHost,
-		ListenPort:                 t.ListenPort,
+		Listen:                     t.Listen,
 		ReadOnly:                   t.ReadOnly,
 		HostUI:                     t.HostUI,
 		HostDocs:                   t.HostDocs,
@@ -86,8 +83,7 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		DatabaseOptions:    c.DatabaseOptions,
 		ReplicationType:    c.ReplicationType,
 		ReplicationOptions: c.ReplicationOptions,
-		ListenHost:         c.ListenHost,
-		ListenPort:         c.ListenPort,
+		Listen:             c.Listen,
 		ReadOnly:           c.ReadOnly,
 		HostUI:             c.HostUI,
 		HostDocs:           c.HostDocs,

@@ -1,11 +1,12 @@
 package command
 
 import (
+	"fmt"
 	"net"
 	"net/http"
+	"regexp"
 	"time"
-	"fmt"
-	
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -14,13 +15,16 @@ import (
 	"github.com/cayleygraph/cayley/internal/config"
 	chttp "github.com/cayleygraph/cayley/internal/http"
 	"github.com/cayleygraph/cayley/quad"
-
 )
 
 const (
 	// http
-	KeyHostUI   = "host_ui"
-	KeyHostDocs = "host_docs"
+	KeyListen   = "http.listen"
+	KeyHostUI   = "http.path_ui"
+	KeyHostDocs = "http.path_docs"
+
+	DefaultHost = "127.0.0.1"
+	DefaultPort = "64210"
 )
 
 func NewHttpCmd() *cobra.Command {
@@ -59,23 +63,43 @@ func NewHttpCmd() *cobra.Command {
 				}
 			}
 
+			// first get listen host/port from configuration
+			listen := viper.GetString(KeyListen)
+
+			// and see if we have listen as a command-line argument
+			cmd_host, _ := cmd.Flags().GetString("listen")
+
+			// command overrides configuration file
+			if cmd_host != "" {
+				listen = cmd_host
+			}
+
+			// do we have a port, otherwise add default port
+			var findPort = regexp.MustCompile(`:[0-9]+$`)
+			if !findPort.MatchString(listen) {
+				listen = net.JoinHostPort(listen, DefaultPort)
+			}
+
+			// make sure we both have the host and port to listen on and use default while left empty
+			split_host, split_port, _ := net.SplitHostPort(listen)
+			if split_host == "" {
+				split_host = DefaultHost
+			}
+
+			listen = net.JoinHostPort(split_host, split_port)
+
 			chttp.SetupRoutes(h, &config.Config{
 				Timeout:  timeout,
 				ReadOnly: ro,
-				HostUI: viper.GetBool(KeyHostUI),
-				HostDocs: viper.GetBool(KeyHostDocs),
+				HostUI:   viper.GetString(KeyHostUI),
+				HostDocs: viper.GetString(KeyHostDocs),
 			})
-			host, _ := cmd.Flags().GetString("host")
-			phost := host
-			if host, port, err := net.SplitHostPort(host); err == nil && host == "" {
-				phost = net.JoinHostPort("localhost", port)
-			}
 
-			clog.Infof("listening on %s, web interface at http://%s", host, phost)
-			return http.ListenAndServe(host, nil)
+			clog.Infof("listening on %s, web interface at http://%s", split_host, listen)
+			return http.ListenAndServe(listen, nil)
 		},
 	}
-	cmd.Flags().String("host", ":64210", "host:port to listen on")
+	cmd.Flags().String("listen", "", "host:port to listen on")
 	cmd.Flags().Bool("init", false, "initialize the database before using it")
 	cmd.Flags().DurationP("timeout", "t", 30*time.Second, "elapsed time until an individual query times out")
 	cmd.Flags().StringVar(&chttp.AssetsPath, "assets", "", "explicit path to the HTTP assets")

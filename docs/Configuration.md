@@ -56,19 +56,32 @@ All command line flags take precedence over the configuration file.
 
   See Per-Database Options, below.
 
-<!--#### **`listen_host`**-->
+#### **`http.listen`**
 
-  <!--* Type: String-->
-  <!--* Default: "127.0.0.1"-->
+  * Type: String
+  * Default: "127.0.0.1:64210"
 
-  <!--The hostname or IP address for Cayley's HTTP server to listen on. Defaults to all interfaces.-->
+  The hostname or IP address for Cayley's HTTP server to listen on optionally followed by a port number.
 
-<!--#### **`listen_port`**-->
+#### **`http.docs_path`**
 
-  <!--* Type: String-->
-  <!--* Default: "64210"-->
+  * Type: String
+  * Default: "./docs/"
 
-  <!--The port for Cayley's HTTP server to listen on.-->
+  The directory with documentation. Default ./docs/ in Cayley project.
+  When configured as empty string, it won't be served.
+  
+  Available on: [http.listen_host:listen_port]/docs/
+
+#### **`http.ui_path`**
+
+  * Type: String
+  * Default: "./ui/"
+
+  The directory with the UI to query Cayley. Default ./ui/ in Cayley project.
+  When configured as empty string, it won't be served.
+  
+  Available on: [http.listen_host:listen_port]/ui/
 
 ## Language Options
 

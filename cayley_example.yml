@@ -12,3 +12,7 @@ load:
   ignore_duplicates: false
   ignore_missing: false
   batch: 10000
+http:
+  listen: 127.0.0.1:64210
+  path_docs: "./docs/"
+  path_ui: "./ui/"

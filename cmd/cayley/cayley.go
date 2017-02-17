@@ -115,15 +115,21 @@ func init() {
 		command.NewHttpCmd(),
 		command.NewConvertCmd(),
 	)
+
+	// config
 	rootCmd.PersistentFlags().StringP("config", "c", "", "path to an explicit configuration file")
 
+	// store
 	rootCmd.PersistentFlags().StringP("db", "d", "memstore", "database backend to use")
 	rootCmd.PersistentFlags().StringP("dbpath", "a", "", "path or address string for database")
 	rootCmd.PersistentFlags().Bool("read_only", false, "open database in read-only mode")
 
-	rootCmd.PersistentFlags().Bool("host_ui", true, "host web ui")
-	rootCmd.PersistentFlags().Bool("host_docs", true, "host documentation")
+	// http
+	rootCmd.PersistentFlags().String("listen", "", "host to listen on")
+	rootCmd.PersistentFlags().String("path_ui", "/ui/", "host web ui")
+	rootCmd.PersistentFlags().String("path_docs", "/docs/", "host documentation")
 
+	// load
 	rootCmd.PersistentFlags().Bool("dup", false, "don't stop loading on duplicated on add")
 	rootCmd.PersistentFlags().Bool("missing", false, "don't stop loading on missing key on delete")
 	rootCmd.PersistentFlags().Int("batch", quad.DefaultBatch, "size of quads batch to load at once")
@@ -133,23 +139,25 @@ func init() {
 	viper.BindPFlag(command.KeyAddress, rootCmd.PersistentFlags().Lookup("dbpath"))
 	viper.BindPFlag(command.KeyReadOnly, rootCmd.PersistentFlags().Lookup("read_only"))
 
-	// http
-	viper.BindPFlag(command.KeyHostUI, rootCmd.PersistentFlags().Lookup("host_ui"))
-	viper.BindPFlag(command.KeyHostDocs, rootCmd.PersistentFlags().Lookup("host_docs"))
-
 	viper.BindPFlag("load.ignore_duplicates", rootCmd.PersistentFlags().Lookup("dup"))
 	viper.BindPFlag("load.ignore_missing", rootCmd.PersistentFlags().Lookup("missing"))
 	viper.BindPFlag("load.batch", rootCmd.PersistentFlags().Lookup("batch"))
 
+	// http
+	viper.BindPFlag(command.KeyListen, rootCmd.PersistentFlags().Lookup("listen"))
+	viper.BindPFlag(command.KeyHostUI, rootCmd.PersistentFlags().Lookup("path_ui"))
+	viper.BindPFlag(command.KeyHostDocs, rootCmd.PersistentFlags().Lookup("path_docs"))
+
 	// make both store.path and store.address work
 	viper.RegisterAlias(command.KeyPath, command.KeyAddress)
+
 	// aliases for legacy config files
 	viper.RegisterAlias("database", command.KeyBackend)
 	viper.RegisterAlias("db_path", command.KeyAddress)
 	viper.RegisterAlias("read_only", command.KeyReadOnly)
-	viper.RegisterAlias("host_ui", command.KeyHostUI)
-	viper.RegisterAlias("host_docs", command.KeyHostDocs)
 	viper.RegisterAlias("db_options", command.KeyOptions)
+
+	viper.RegisterAlias("host", command.KeyListen)
 }
 
 func main() {
