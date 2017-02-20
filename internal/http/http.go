@@ -90,7 +90,7 @@ func jsonResponse(w http.ResponseWriter, code int, err interface{}) int {
 
 type TemplateRequestHandler struct {
 	templates *template.Template
-	path      string
+	ShowDocs  bool
 }
 
 func (h *TemplateRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -98,6 +98,7 @@ func (h *TemplateRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	if r.URL.Path == "/" {
 		uiType = "query"
 	}
+
 	err := h.templates.ExecuteTemplate(w, uiType+".html", h)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -143,10 +144,12 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	if clog.V(2) {
 		clog.Infof("Found assets at %v", assets)
 	}
+
 	var templates = template.Must(template.ParseGlob(fmt.Sprint(assets, "/templates/*.tmpl")))
 	templates.ParseGlob(fmt.Sprint(assets, "/templates/*.html"))
-	root := &TemplateRequestHandler{templates: templates, path: cfg.HostUI}
-	docs := &DocRequestHandler{assets: assets, path: cfg.HostDocs}
+
+	root := &TemplateRequestHandler{templates: templates, ShowDocs: cfg.ServeDocs}
+	docs := &DocRequestHandler{assets: assets}
 	api := &API{config: cfg, handle: handle}
 	api.APIv1(r)
 
@@ -154,18 +157,18 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	//r.Handler("GET", "/static", http.StripPrefix("/static", http.FileServer(http.Dir("static/"))))
 
 	// only show docs when allowed
-	if cfg.HostDocs != "" {
+	if cfg.ServeDocs {
 		r.GET("/docs/:docpage", docs.ServeHTTP)
 	}
 
 	// only show UI when allowed
-	if cfg.HostUI != "" {
+	if cfg.ServeUI {
 		r.GET("/ui/:ui_type", root.ServeHTTP)
 		r.GET("/", root.ServeHTTP)
 	}
 
 	// enable static assets when docs or UI is enabled
-	if cfg.HostUI != "" || cfg.HostDocs != "" {
+	if cfg.ServeUI || cfg.ServeDocs {
 		http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
 		http.Handle("/", r)
 	}

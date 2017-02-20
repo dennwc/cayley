@@ -14,5 +14,6 @@ load:
   batch: 10000
 http:
   listen: 127.0.0.1:64210
-  path_docs: "./docs/"
-  path_ui: "./ui/"
+  serve_docs: false
+  serve_ui: true
+  assets_path: "./"

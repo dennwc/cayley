@@ -62,6 +62,9 @@ All command line flags take precedence over the configuration file.
   * Default: "127.0.0.1:64210"
 
   The hostname or IP address for Cayley's HTTP server to listen on optionally followed by a port number.
+  IPv6 address need to be configured with square brackets: [2001:db8::]:port
+  
+  If you want to listen to all interfaces use 0.0.0.0 as a host or specify a specific IP address to listen on.
 
 #### **`http.docs_path`**
 

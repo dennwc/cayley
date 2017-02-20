@@ -31,8 +31,8 @@ type Config struct {
 	ReplicationOptions         map[string]interface{}
 	Listen                     string
 	ReadOnly                   bool
-	HostUI                     string
-	HostDocs                   string
+	ServeUI                    bool
+	ServeDocs                  bool
 	Timeout                    time.Duration
 	LoadSize                   int
 	RequiresHTTPRequestContext bool
@@ -46,8 +46,8 @@ type config struct {
 	ReplicationOptions         map[string]interface{} `json:"replication_options"`
 	Listen                     string                 `json:"listen"`
 	ReadOnly                   bool                   `json:"read_only"`
-	HostUI                     string                 `json:"host_ui"`
-	HostDocs                   string                 `json:"host_docs"`
+	ServeUI                    bool                   `json:"serve_ui"`
+	ServeDocs                  bool                   `json:"serve_docs"`
 	Timeout                    duration               `json:"timeout"`
 	LoadSize                   int                    `json:"load_size"`
 	RequiresHTTPRequestContext bool                   `json:"http_request_context"`
@@ -67,8 +67,8 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		ReplicationOptions:         t.ReplicationOptions,
 		Listen:                     t.Listen,
 		ReadOnly:                   t.ReadOnly,
-		HostUI:                     t.HostUI,
-		HostDocs:                   t.HostDocs,
+		ServeUI:                    t.ServeUI,
+		ServeDocs:                  t.ServeDocs,
 		Timeout:                    time.Duration(t.Timeout),
 		LoadSize:                   t.LoadSize,
 		RequiresHTTPRequestContext: t.RequiresHTTPRequestContext,
@@ -85,8 +85,8 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		ReplicationOptions: c.ReplicationOptions,
 		Listen:             c.Listen,
 		ReadOnly:           c.ReadOnly,
-		HostUI:             c.HostUI,
-		HostDocs:           c.HostDocs,
+		ServeUI:            c.ServeUI,
+		ServeDocs:          c.ServeDocs,
 		Timeout:            duration(c.Timeout),
 		LoadSize:           c.LoadSize,
 	})

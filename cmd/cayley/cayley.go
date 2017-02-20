@@ -125,9 +125,10 @@ func init() {
 	rootCmd.PersistentFlags().Bool("read_only", false, "open database in read-only mode")
 
 	// http
-	rootCmd.PersistentFlags().String("listen", "", "host to listen on")
-	rootCmd.PersistentFlags().String("path_ui", "/ui/", "host web ui")
-	rootCmd.PersistentFlags().String("path_docs", "/docs/", "host documentation")
+	rootCmd.PersistentFlags().String("host", "", "host to listen on written as host:port")
+	rootCmd.PersistentFlags().Bool("serve_ui", true, "serve UI while running cayley http")
+	rootCmd.PersistentFlags().Bool("serve_docs", true, "serve docs while running cayley http")
+	rootCmd.PersistentFlags().String("assets", "./", "explicit path to the HTTP assets, should contain: templates, docs and ui")
 
 	// load
 	rootCmd.PersistentFlags().Bool("dup", false, "don't stop loading on duplicated on add")
@@ -143,10 +144,10 @@ func init() {
 	viper.BindPFlag("load.ignore_missing", rootCmd.PersistentFlags().Lookup("missing"))
 	viper.BindPFlag("load.batch", rootCmd.PersistentFlags().Lookup("batch"))
 
-	// http
-	viper.BindPFlag(command.KeyListen, rootCmd.PersistentFlags().Lookup("listen"))
-	viper.BindPFlag(command.KeyHostUI, rootCmd.PersistentFlags().Lookup("path_ui"))
-	viper.BindPFlag(command.KeyHostDocs, rootCmd.PersistentFlags().Lookup("path_docs"))
+	viper.BindPFlag(command.KeyListen, rootCmd.PersistentFlags().Lookup("host"))
+	viper.BindPFlag(command.KeyServeUI, rootCmd.PersistentFlags().Lookup("serve_ui"))
+	viper.BindPFlag(command.KeyServeDocs, rootCmd.PersistentFlags().Lookup("serve_docs"))
+	viper.BindPFlag(command.KeyAssetsPath, rootCmd.PersistentFlags().Lookup("assets"))
 
 	// make both store.path and store.address work
 	viper.RegisterAlias(command.KeyPath, command.KeyAddress)
@@ -156,8 +157,6 @@ func init() {
 	viper.RegisterAlias("db_path", command.KeyAddress)
 	viper.RegisterAlias("read_only", command.KeyReadOnly)
 	viper.RegisterAlias("db_options", command.KeyOptions)
-
-	viper.RegisterAlias("host", command.KeyListen)
 }
 
 func main() {

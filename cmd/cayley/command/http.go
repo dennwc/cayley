@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,9 +20,10 @@ import (
 
 const (
 	// http
-	KeyListen   = "http.listen"
-	KeyHostUI   = "http.path_ui"
-	KeyHostDocs = "http.path_docs"
+	KeyListen     = "http.listen"
+	KeyServeUI    = "http.serve_ui"
+	KeyServeDocs  = "http.serve_docs"
+	KeyAssetsPath = "http.assets_path"
 
 	DefaultHost = "127.0.0.1"
 	DefaultPort = "64210"
@@ -33,6 +35,18 @@ func NewHttpCmd() *cobra.Command {
 		Short: "Serve an HTTP endpoint on the given host and port.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			printBackendInfo()
+
+			serveDocs := viper.GetBool(KeyServeDocs)
+			serveUI := viper.GetBool(KeyServeUI)
+
+			// override assetpath
+			chttp.AssetsPath = strings.Trim(viper.GetString(KeyAssetsPath), " ")
+			if serveDocs || serveUI {
+				clog.Infof("serving ui: %v, serving docs: %v, using assets dir: %s", serveUI, serveDocs, chttp.AssetsPath)
+			} else {
+				clog.Infof("not serving docs and UI")
+			}
+
 			timeout, err := cmd.Flags().GetDuration("timeout")
 			if err != nil {
 				return err
@@ -44,6 +58,7 @@ func NewHttpCmd() *cobra.Command {
 					return err
 				}
 			}
+
 			h, err := openDatabase()
 			if err != nil {
 				return err
@@ -63,46 +78,40 @@ func NewHttpCmd() *cobra.Command {
 				}
 			}
 
-			// first get listen host/port from configuration
-			listen := viper.GetString(KeyListen)
+			// get listen on configuration, should be overridden by command line arguments
+			listen := strings.Trim(viper.GetString(KeyListen), " ")
 
-			// and see if we have listen as a command-line argument
-			cmd_host, _ := cmd.Flags().GetString("listen")
-
-			// command overrides configuration file
-			if cmd_host != "" {
-				listen = cmd_host
-			}
-
-			// do we have a port, otherwise add default port
+			// do we have a port, otherwise add default port, tested with IPv6
 			var findPort = regexp.MustCompile(`:[0-9]+$`)
 			if !findPort.MatchString(listen) {
-				listen = net.JoinHostPort(listen, DefaultPort)
+				// net.JoinHostPort does not work without splitting it first
+				listen = fmt.Sprintf("%s:%s", listen, DefaultPort)
 			}
 
-			// make sure we both have the host and port to listen on and use default while left empty
-			split_host, split_port, _ := net.SplitHostPort(listen)
-			if split_host == "" {
-				split_host = DefaultHost
+			host, port, err := net.SplitHostPort(listen)
+			if err != nil {
+				return err
 			}
 
-			listen = net.JoinHostPort(split_host, split_port)
+			if host == "" {
+				host = DefaultHost
+			}
+
+			listen = net.JoinHostPort(host, port)
 
 			chttp.SetupRoutes(h, &config.Config{
-				Timeout:  timeout,
-				ReadOnly: ro,
-				HostUI:   viper.GetString(KeyHostUI),
-				HostDocs: viper.GetString(KeyHostDocs),
+				Timeout:   timeout,
+				ReadOnly:  ro,
+				ServeUI:   serveUI,
+				ServeDocs: serveDocs,
 			})
 
-			clog.Infof("listening on %s, web interface at http://%s", split_host, listen)
+			clog.Infof("listening on %s, web interface at http://%s", host, listen)
 			return http.ListenAndServe(listen, nil)
 		},
 	}
-	cmd.Flags().String("listen", "", "host:port to listen on")
 	cmd.Flags().Bool("init", false, "initialize the database before using it")
 	cmd.Flags().DurationP("timeout", "t", 30*time.Second, "elapsed time until an individual query times out")
-	cmd.Flags().StringVar(&chttp.AssetsPath, "assets", "", "explicit path to the HTTP assets")
 	registerLoadFlags(cmd)
 	return cmd
 }
