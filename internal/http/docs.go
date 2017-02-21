@@ -20,6 +20,8 @@ import (
 	"net/http"
 	"os"
 
+	"strings"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/russross/blackfriday"
 )
@@ -53,10 +55,11 @@ func MarkdownWithCSS(input []byte, title string) []byte {
 }
 
 func (h *DocRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-	docpage := params.ByName("docpage")
+	docpage := strings.TrimSuffix(params.ByName("docpage"), ".md")
 	if docpage == "" {
-		docpage = "Index"
+		docpage = "README"
 	}
+
 	file, err := os.Open(fmt.Sprintf("%s/docs/%s.md", h.assets, docpage))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)

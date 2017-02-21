@@ -23,14 +23,15 @@
 
   {{template "top_navbar"}}
 
-  <div class="container-fluid">
+    <div class="container-fluid">
     <div class="row row-offcanvas row-offcanvas-left">
-      {{template "sidebar"}}
+      {{template "sidebar" .}}
       <!-- main area -->
       <div class="col-sm-10 col-xs-12" id="main">
         <div class="row">
           <div class="col-xs-12 col-sm-12">
-            <h2> Write an N-Quads file: </h2>
+              <h2> Write a N-Quads file: </h2>
+              <p>You can upload a file with N-Quads to your database:</p>
               <input id="nquad_file" type="file"></input>
             </div>
           </div><!-- /.col-xs-12 main -->

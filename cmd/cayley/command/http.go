@@ -40,7 +40,7 @@ func NewHttpCmd() *cobra.Command {
 			serveUI := viper.GetBool(KeyServeUI)
 
 			// override assetpath
-			chttp.AssetsPath = strings.Trim(viper.GetString(KeyAssetsPath), " ")
+			chttp.AssetsPath = strings.TrimSpace(viper.GetString(KeyAssetsPath))
 			if serveDocs || serveUI {
 				clog.Infof("serving ui: %v, serving docs: %v, using assets dir: %s", serveUI, serveDocs, chttp.AssetsPath)
 			} else {
@@ -79,7 +79,7 @@ func NewHttpCmd() *cobra.Command {
 			}
 
 			// get listen on configuration, should be overridden by command line arguments
-			listen := strings.Trim(viper.GetString(KeyListen), " ")
+			listen := strings.TrimSpace(viper.GetString(KeyListen))
 
 			// do we have a port, otherwise add default port, tested with IPv6
 			var findPort = regexp.MustCompile(`:[0-9]+$`)

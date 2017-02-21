@@ -89,8 +89,8 @@ func jsonResponse(w http.ResponseWriter, code int, err interface{}) int {
 }
 
 type TemplateRequestHandler struct {
-	templates *template.Template
-	ShowDocs  bool
+	templates      *template.Template
+	ShowDocsButton bool
 }
 
 func (h *TemplateRequestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -148,7 +148,7 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	var templates = template.Must(template.ParseGlob(fmt.Sprint(assets, "/templates/*.tmpl")))
 	templates.ParseGlob(fmt.Sprint(assets, "/templates/*.html"))
 
-	root := &TemplateRequestHandler{templates: templates, ShowDocs: cfg.ServeDocs}
+	root := &TemplateRequestHandler{templates: templates, ShowDocsButton: cfg.ServeDocs}
 	docs := &DocRequestHandler{assets: assets}
 	api := &API{config: cfg, handle: handle}
 	api.APIv1(r)
@@ -170,6 +170,7 @@ func SetupRoutes(handle *graph.Handle, cfg *config.Config) {
 	// enable static assets when docs or UI is enabled
 	if cfg.ServeUI || cfg.ServeDocs {
 		http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(fmt.Sprint(assets, "/static/")))))
-		http.Handle("/", r)
+
 	}
+	http.Handle("/", r)
 }
