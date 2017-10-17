@@ -37,6 +37,7 @@ import (
 	_ "github.com/cayleygraph/cayley/graph/all"
 
 	// Load all supported quad formats.
+	_ "github.com/cayleygraph/cayley/quad/csv"
 	_ "github.com/cayleygraph/cayley/quad/dot"
 	_ "github.com/cayleygraph/cayley/quad/gml"
 	_ "github.com/cayleygraph/cayley/quad/graphml"
