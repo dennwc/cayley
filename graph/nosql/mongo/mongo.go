@@ -67,7 +67,10 @@ func dialDB(addr string, opt graph.Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DB{sess: sess, db: sess.DB("")}, nil
+	return &DB{
+		sess: sess, db: sess.DB(""),
+		colls: make(map[string]collection),
+	}, nil
 }
 
 func Create(addr string, opt graph.Options) (nosql.Database, error) {
@@ -78,28 +81,54 @@ func Open(addr string, opt graph.Options) (nosql.Database, error) {
 	return dialDB(addr, opt)
 }
 
+type collection struct {
+	c         *mgo.Collection
+	compPK    bool // compose PK from existing keys; if false, use _id instead of target field
+	primary   nosql.Index
+	secondary []nosql.Index
+}
+
 type DB struct {
-	sess *mgo.Session
-	db   *mgo.Database
+	sess  *mgo.Session
+	db    *mgo.Database
+	colls map[string]collection
 }
 
 func (db *DB) Close() error {
 	db.sess.Close()
 	return nil
 }
-func (db *DB) EnsureIndex(col string, indexes ...nosql.Index) error {
+func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
+	if primary.Type != nosql.StringExact {
+		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
+	}
 	c := db.db.C(col)
-	for _, ind := range indexes {
+	compPK := len(primary.Fields) != 1
+	if compPK {
 		err := c.EnsureIndex(mgo.Index{
-			Key:        []string{ind.Field},
+			Key:    []string(primary.Fields),
+			Unique: true,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	for _, ind := range secondary {
+		err := c.EnsureIndex(mgo.Index{
+			Key:        []string(ind.Fields),
 			Unique:     false,
-			DropDups:   false,
 			Background: true,
 			Sparse:     true,
 		})
 		if err != nil {
 			return err
 		}
+	}
+	db.colls[col] = collection{
+		c:         c,
+		compPK:    compPK,
+		primary:   primary,
+		secondary: secondary,
 	}
 	return nil
 }
@@ -186,54 +215,89 @@ func fromBsonDoc(d bson.M) nosql.Document {
 
 const idField = "_id"
 
-func convRootDoc(m bson.M) nosql.Document {
-	d := fromBsonDoc(m)
-	if id, ok := d[idField]; ok {
-		delete(d, idField)
-		d[nosql.IDField] = id
+func (c *collection) getKey(m bson.M) nosql.Key {
+	if !c.compPK {
+		// key field renamed to _id - just return it
+		if v, ok := m[idField].(string); ok {
+			return nosql.Key{v}
+		}
+		return nil
 	}
-	return d
+	// key field computed from multiple source fields
+	// get source fields from document in correct order
+	key := make(nosql.Key, 0, len(c.primary.Fields))
+	for _, f := range c.primary.Fields {
+		s, _ := m[f].(string)
+		key = append(key, s)
+	}
+	return key
+}
+
+func (c *collection) convDoc(m bson.M) nosql.Document {
+	if c.compPK {
+		// key field computed from multiple source fields - remove it
+		delete(m, idField)
+	} else {
+		// key field renamed - set correct name
+		if v := m[idField]; v != nil {
+			delete(m, idField)
+			m[c.primary.Fields[0]] = v
+		}
+	}
+	return fromBsonDoc(m)
 }
 
 func objidString(id bson.ObjectId) string {
 	return hex.EncodeToString([]byte(id))
 }
 
-func (db *DB) Insert(col string, id string, d nosql.Document) (string, error) {
+func compKey(key []string) string {
+	return strings.Join(key, "")
+}
+
+func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
 	m := toBsonDoc(d)
 	var mid interface{}
-	if id == "" {
+	if key == nil {
 		oid := bson.NewObjectId()
 		mid = oid
-		id = objidString(oid)
+		key = nosql.Key{objidString(oid)}
 	} else {
-		mid = id
+		mid = compKey([]string(key))
 	}
+	c := db.colls[col]
 	m[idField] = mid
-	delete(m, nosql.IDField)
-	if err := db.db.C(col).Insert(m); err != nil {
-		return "", err
+	if !c.compPK {
+		// delete source field, since we already added it as _id
+		delete(m, c.primary.Fields[0])
 	}
-	return id, nil
+	if err := c.c.Insert(m); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
-func (db *DB) FindByID(col string, id string) (nosql.Document, error) {
+func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
+	c := db.colls[col]
 	var m bson.M
-	err := db.db.C(col).FindId(id).One(&m)
+	err := c.c.FindId(compKey([]string(key))).One(&m)
 	if err == mgo.ErrNotFound {
 		return nil, nosql.ErrNotFound
 	} else if err != nil {
 		return nil, err
 	}
-	return fromBsonDoc(m), nil
+	return c.convDoc(m), nil
 }
 func (db *DB) Query(col string) nosql.Query {
-	return &Query{col: db.db.C(col)}
+	c := db.colls[col]
+	return &Query{c: &c}
 }
-func (db *DB) Update(col string, id string) nosql.Update {
-	return &Update{col: db.db.C(col), id: id, update: make(bson.M)}
+func (db *DB) Update(col string, key nosql.Key) nosql.Update {
+	c := db.colls[col]
+	return &Update{col: &c, key: key, update: make(bson.M)}
 }
 func (db *DB) Delete(col string) nosql.Delete {
-	return &Delete{col: db.db.C(col)}
+	c := db.colls[col]
+	return &Delete{col: &c}
 }
 
 func buildFilters(filters []nosql.FieldFilter) bson.M {
@@ -269,7 +333,7 @@ func mergeFilters(dst, src bson.M) {
 }
 
 type Query struct {
-	col   *mgo.Collection
+	c     *collection
 	limit int
 	query bson.M
 }
@@ -292,7 +356,7 @@ func (q *Query) build() *mgo.Query {
 	if q.query != nil {
 		m = q.query
 	}
-	qu := q.col.Find(m)
+	qu := q.c.c.Find(m)
 	if q.limit > 0 {
 		qu = qu.Limit(q.limit)
 	}
@@ -310,14 +374,15 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 	} else if err != nil {
 		return nil, err
 	}
-	return convRootDoc(m), nil
+	return q.c.convDoc(m), nil
 }
 func (q *Query) Iterate() nosql.DocIterator {
 	it := q.build().Iter()
-	return &Iterator{it: it}
+	return &Iterator{it: it, c: q.c}
 }
 
 type Iterator struct {
+	c   *collection
 	it  *mgo.Iter
 	res bson.M
 }
@@ -332,12 +397,11 @@ func (it *Iterator) Err() error {
 func (it *Iterator) Close() error {
 	return it.it.Close()
 }
-func (it *Iterator) ID() string {
-	s, _ := fromBsonValue(it.res[idField]).(nosql.String)
-	return string(s)
+func (it *Iterator) Key() nosql.Key {
+	return it.c.getKey(it.res)
 }
 func (it *Iterator) Doc() nosql.Document {
-	return convRootDoc(it.res)
+	return it.c.convDoc(it.res)
 }
 
 type Delete struct {
@@ -354,13 +418,13 @@ func (d *Delete) WithFields(filters ...nosql.FieldFilter) nosql.Delete {
 	}
 	return d
 }
-func (d *Delete) IDs(ids ...string) nosql.Delete {
-	if len(ids) == 0 {
+func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
+	if len(keys) == 0 {
 		return d
 	}
 	m := make(bson.M, 1)
-	if len(ids) == 1 {
-		m[idField] = ids[0]
+	if len(keys) == 1 {
+		m[idField] = compKey(keys[0])
 	} else {
 		m[idField] = bson.M{"$in": ids}
 	}
@@ -382,7 +446,7 @@ func (d *Delete) Do(ctx context.Context) error {
 
 type Update struct {
 	col    *mgo.Collection
-	id     string
+	key    nosql.Key
 	upsert bson.M
 	update bson.M
 }
@@ -418,9 +482,9 @@ func (u *Update) Do(ctx context.Context) error {
 		if len(u.upsert) != 0 {
 			u.update["$setOnInsert"] = u.upsert
 		}
-		_, err = u.col.UpsertId(u.id, u.update)
+		_, err = u.col.UpsertId(u.key, u.update)
 	} else {
-		err = u.col.UpdateId(u.id, u.update)
+		err = u.col.UpdateId(u.key, u.update)
 	}
 	return err
 }

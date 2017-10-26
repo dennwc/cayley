@@ -148,10 +148,16 @@ func (it *Iterator) Next() bool {
 	if it.collection == colQuads && !checkQuadValid(doc) {
 		return it.Next()
 	}
-	id, _ := doc[IDField].(String)
 	if it.collection == colQuads {
-		it.result = QuadHash(id)
+		sh, _ := doc[fldSubject].(String)
+		ph, _ := doc[fldPredicate].(String)
+		oh, _ := doc[fldObject].(String)
+		lh, _ := doc[fldLabel].(String)
+		it.result = QuadHash{
+			string(sh), string(ph), string(oh), string(lh),
+		}
 	} else {
+		id, _ := doc[fldID].(String)
 		it.result = NodeHash(id)
 	}
 	return true

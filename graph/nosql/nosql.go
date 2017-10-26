@@ -6,24 +6,24 @@ import (
 	"time"
 )
 
-const (
-	IDField = "id"
-)
-
 var (
 	ErrNotFound = errors.New("not found")
 )
 
+type Key []string
+
+func (Key) isValue() {}
+
 type Database interface {
-	Insert(col string, id string, d Document) (string, error)
-	FindByID(col string, id string) (Document, error)
+	Insert(col string, key Key, d Document) (Key, error)
+	FindByKey(col string, key Key) (Document, error)
 	Query(col string) Query
-	Update(col string, id string) Update
+	Update(col string, key Key) Update
 	Delete(col string) Delete
 	// EnsureIndex
 	//
 	// Should create collection if it not exists
-	EnsureIndex(col string, indexes ...Index) error
+	EnsureIndex(col string, primary Index, secondary []Index) error
 	Close() error
 }
 
@@ -63,7 +63,7 @@ type Update interface {
 
 type Delete interface {
 	WithFields(filters ...FieldFilter) Delete
-	IDs(ids ...string) Delete
+	Keys(keys ...Key) Delete
 	Do(ctx context.Context) error
 }
 
@@ -71,7 +71,7 @@ type DocIterator interface {
 	Next(ctx context.Context) bool
 	Err() error
 	Close() error
-	ID() string
+	Key() Key
 	Doc() Document
 }
 
@@ -87,8 +87,8 @@ const (
 )
 
 type Index struct {
-	Field string
-	Type  IndexType
+	Fields []string
+	Type   IndexType
 }
 
 type Value interface {
