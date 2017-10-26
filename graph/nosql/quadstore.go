@@ -92,27 +92,24 @@ type NodeHash string
 func (NodeHash) IsNode() bool       { return false }
 func (v NodeHash) Key() interface{} { return v }
 
-type QuadHash string
+type QuadHash [4]string
 
 func (QuadHash) IsNode() bool       { return false }
 func (v QuadHash) Key() interface{} { return v }
 
 func (h QuadHash) Get(d quad.Direction) string {
-	var offset int
+	var ind int
 	switch d {
 	case quad.Subject:
-		offset = 0
+		ind = 0
 	case quad.Predicate:
-		offset = (quad.HashSize * 2)
+		ind = 1
 	case quad.Object:
-		offset = (quad.HashSize * 2) * 2
+		ind = 2
 	case quad.Label:
-		offset = (quad.HashSize * 2) * 3
-		if len(h) == offset { // no label
-			return ""
-		}
+		ind = 3
 	}
-	return string(h[offset : quad.HashSize*2+offset])
+	return h[ind]
 }
 
 const (
@@ -125,6 +122,7 @@ const (
 	fldObject    = "object"
 	fldLabel     = "label"
 
+	fldID      = "id"
 	fldValue   = "Name"
 	fldSize    = "Size"
 	fldAdded   = "Added"
@@ -144,32 +142,47 @@ type QuadStore struct {
 }
 
 func ensureIndexes(db Database) error {
-	err := db.EnsureIndex(colLog)
+	err := db.EnsureIndex(colLog, Index{
+		Fields: []string{fldID},
+		Type:   StringExact,
+	}, nil)
 	if err != nil {
 		return err
 	}
-	err = db.EnsureIndex(colNodes)
+	err = db.EnsureIndex(colNodes, Index{
+		Fields: []string{fldID},
+		Type:   StringExact,
+	}, nil)
 	if err != nil {
 		return err
 	}
-	err = db.EnsureIndex(colQuads,
-		Index{Field: fldSubject, Type: StringExact},
-		Index{Field: fldPredicate, Type: StringExact},
-		Index{Field: fldObject, Type: StringExact},
-		Index{Field: fldLabel, Type: StringExact},
-	)
+	err = db.EnsureIndex(colQuads, Index{
+		Fields: []string{
+			fldSubject,
+			fldPredicate,
+			fldObject,
+			fldLabel,
+		},
+		Type: StringExact,
+	}, []Index{
+		{Fields: []string{fldSubject}, Type: StringExact},
+		{Fields: []string{fldPredicate}, Type: StringExact},
+		{Fields: []string{fldObject}, Type: StringExact},
+		{Fields: []string{fldLabel}, Type: StringExact},
+	})
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (qs *QuadStore) getIDForQuad(t quad.Quad) string {
-	id := hashOf(t.Subject)
-	id += hashOf(t.Predicate)
-	id += hashOf(t.Object)
-	id += hashOf(t.Label)
-	return id
+func (qs *QuadStore) getIDForQuad(t quad.Quad) Key {
+	return Key{
+		hashOf(t.Subject),
+		hashOf(t.Predicate),
+		hashOf(t.Object),
+		hashOf(t.Label),
+	}
 }
 
 func hashOf(s quad.Value) string {
@@ -194,16 +207,16 @@ type logEntry struct {
 func (qs *QuadStore) updateNodeBy(ctx context.Context, name quad.Value, inc int) error {
 	_ = node{}
 	node := qs.ValueOf(name)
-	id := string(node.(NodeHash))
+	key := Key{string(node.(NodeHash))}
 
-	err := qs.db.Update(colNodes, id).Upsert(Document{
+	err := qs.db.Update(colNodes, key).Upsert(Document{
 		fldValue: toDocumentValue(name),
 	}).Inc(fldSize, inc).Do(ctx)
 	if err != nil {
 		clog.Errorf("Error updating node: %v", err)
 	}
 	if inc < 0 {
-		err = qs.db.Delete(colNodes).IDs(id).WithFields(FieldFilter{
+		err = qs.db.Delete(colNodes).IDs(key).WithFields(FieldFilter{
 			Path:   []string{fldSize},
 			Filter: Equal,
 			Value:  Int(0),
@@ -215,7 +228,7 @@ func (qs *QuadStore) updateNodeBy(ctx context.Context, name quad.Value, inc int)
 	return err
 }
 
-func (qs *QuadStore) updateQuad(ctx context.Context, q quad.Quad, id string, proc graph.Procedure) error {
+func (qs *QuadStore) updateQuad(ctx context.Context, q quad.Quad, key Key, proc graph.Procedure) error {
 	var setname string
 	if proc == graph.Add {
 		setname = fldAdded
@@ -230,8 +243,12 @@ func (qs *QuadStore) updateQuad(ctx context.Context, q quad.Quad, id string, pro
 	if l := hashOf(q.Label); l != "" {
 		doc[fldLabel] = String(l)
 	}
+	if len(key) != 1 {
+		// we should not push vector keys to arrays
+		panic(fmt.Errorf("unexpected key: %v", key))
+	}
 	err := qs.db.Update(colQuads, qs.getIDForQuad(q)).Upsert(doc).
-		Push(setname, String(id)).Do(ctx)
+		Push(setname, key).Do(ctx)
 	if err != nil {
 		clog.Errorf("Error: %v", err)
 	}
@@ -244,8 +261,8 @@ func checkQuadValid(q Document) bool {
 	return len(added) > len(deleted)
 }
 
-func (qs *QuadStore) checkValid(key string) bool {
-	q, err := qs.db.FindByID(colQuads, key)
+func (qs *QuadStore) checkValidQuad(key []string) bool {
+	q, err := qs.db.FindByKey(colQuads, key)
 	if err == ErrNotFound {
 		return false
 	}
@@ -256,7 +273,7 @@ func (qs *QuadStore) checkValid(key string) bool {
 	return checkQuadValid(q)
 }
 
-func (qs *QuadStore) updateLog(d *graph.Delta) (string, error) {
+func (qs *QuadStore) updateLog(d *graph.Delta) (Key, error) {
 	var action string
 	if d.Action == graph.Add {
 		action = "Add"
@@ -264,9 +281,9 @@ func (qs *QuadStore) updateLog(d *graph.Delta) (string, error) {
 		action = "Delete"
 	}
 	_ = logEntry{}
-	return qs.db.Insert(colLog, "", Document{
+	return qs.db.Insert(colLog, nil, Document{
 		"Action": String(action),
-		"Key":    String(qs.getIDForQuad(d.Quad)),
+		"Key":    qs.getIDForQuad(d.Quad),
 	})
 }
 
@@ -281,7 +298,7 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 		key := qs.getIDForQuad(d.Quad)
 		switch d.Action {
 		case graph.Add:
-			if qs.checkValid(key) {
+			if qs.checkValidQuad(key) {
 				if ignoreOpts.IgnoreDup {
 					continue
 				} else {
@@ -289,7 +306,7 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 				}
 			}
 		case graph.Delete:
-			if !qs.checkValid(key) {
+			if !qs.checkValidQuad(key) {
 				if ignoreOpts.IgnoreMissing {
 					continue
 				} else {
@@ -313,7 +330,7 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta, ignoreOpts graph.IgnoreOp
 	if clog.V(2) {
 		clog.Infof("Existence verified. Proceeding.")
 	}
-	oids := make([]string, 0, len(deltas))
+	oids := make([]Key, 0, len(deltas))
 	for i, d := range deltas {
 		id, err := qs.updateLog(&deltas[i])
 		if err != nil {
@@ -475,11 +492,11 @@ func (qs *QuadStore) NameOf(v graph.Value) quad.Value {
 		return val.(quad.Value)
 	}
 	_ = node{}
-	nd, err := qs.db.FindByID(colNodes, string(hash))
+	nd, err := qs.db.FindByKey(colNodes, Key{string(hash)})
 	if err != nil {
 		clog.Errorf("Error: Couldn't retrieve node %s %v", v, err)
 	}
-	id, _ := nd[IDField].(String)
+	id, _ := nd[fldID].(String)
 	dv, _ := nd[fldValue]
 	qv := toQuadValue(dv)
 	if id != "" && qv != nil {
@@ -510,7 +527,7 @@ func (qs *QuadStore) Horizon() graph.PrimaryKey {
 	}
 	_ = logEntry{}
 	var id string
-	if v, ok := log[IDField].(String); ok {
+	if v, ok := log[fldID].(String); ok {
 		id = string(v)
 	}
 	if id == "" {
