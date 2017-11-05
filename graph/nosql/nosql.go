@@ -56,7 +56,6 @@ type Query interface {
 type Update interface {
 	//Set(d Document) Update
 	Inc(field string, dn int) Update
-	Push(field string, v Value) Update
 	Upsert(d Document) Update
 	Do(ctx context.Context) error
 }

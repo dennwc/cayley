@@ -48,7 +48,10 @@ func newDB(addr string, opt graph.Options) (*DB, error) {
 	if addr == "" {
 		addr = nosql.DefaultDBName
 	}
-	return &DB{pref: addr + "_", db: dynamodb.New(sess)}, nil
+	return &DB{
+		pref: addr + "_", db: dynamodb.New(sess),
+		tables: make(map[string]table),
+	}, nil
 }
 
 func Create(addr string, opt graph.Options) (nosql.Database, error) {
@@ -70,9 +73,40 @@ func convError(err error) error {
 	return err
 }
 
+type table struct {
+	name      *string
+	compRange bool // range key composed from multiple fields
+	primary   nosql.Index
+	secondary []nosql.Index
+}
+
+func (t *table) rangeKey(key nosql.Key) *dynamodb.AttributeValue {
+	return str(strings.Join([]string(key[1:]), ""))
+}
+
+func (t *table) getKey(key nosql.Key) map[string]*dynamodb.AttributeValue {
+	keys := make(map[string]*dynamodb.AttributeValue, 2)
+	fields := t.primary.Fields
+	keys[fields[0]] = str(key[0])
+	if len(fields) == 2 {
+		keys[fields[1]] = str(key[1])
+	} else if len(fields) > 1 {
+		keys[fldRange] = t.rangeKey(key)
+	}
+	return keys
+}
+
+func (t *table) convDoc(m map[string]*dynamodb.AttributeValue) nosql.Document {
+	if len(t.primary.Fields) > 2 {
+		delete(m, fldRange)
+	}
+	return fromAwsDoc(m)
+}
+
 type DB struct {
-	pref string
-	db   *dynamodb.DynamoDB
+	pref   string
+	db     *dynamodb.DynamoDB
+	tables map[string]table
 }
 
 func (db *DB) col(name string) *string {
@@ -104,22 +138,44 @@ func (db *DB) waitTable(ctx context.Context, name *string) error {
 	}
 }
 
-func (db *DB) EnsureIndex(col string, indexes ...nosql.Index) error {
+const fldRange = "range"
+
+func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
+	if primary.Type != nosql.StringExact {
+		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
+	}
 	tbl := db.col(col)
+
+	var (
+		attrs []*dynamodb.AttributeDefinition
+		keys  []*dynamodb.KeySchemaElement
+	)
+	for i, f := range primary.Fields {
+		if i > 1 {
+			// dynamo supports only 2 fields in pk
+			// we will compute the second one by concatenating other fields
+			attrs[1].AttributeName = aws.String(fldRange)
+			keys[1].AttributeName = aws.String(fldRange)
+			break
+		}
+		kt := "RANGE"
+		if i == 0 {
+			kt = "HASH"
+		}
+		attrs = append(attrs, &dynamodb.AttributeDefinition{
+			AttributeName: aws.String(f),
+			AttributeType: aws.String("S"),
+		})
+		keys = append(keys, &dynamodb.KeySchemaElement{
+			AttributeName: aws.String(f),
+			KeyType:       aws.String(kt),
+		})
+	}
+
 	_, err := db.db.CreateTable(&dynamodb.CreateTableInput{
-		TableName: tbl,
-		AttributeDefinitions: []*dynamodb.AttributeDefinition{
-			{
-				AttributeName: aws.String(nosql.IDField),
-				AttributeType: aws.String("S"),
-			},
-		},
-		KeySchema: []*dynamodb.KeySchemaElement{
-			{
-				AttributeName: aws.String(nosql.IDField),
-				KeyType:       aws.String("HASH"),
-			},
-		},
+		TableName:            tbl,
+		AttributeDefinitions: attrs,
+		KeySchema:            keys,
 		ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
 			ReadCapacityUnits:  aws.Int64(5),
 			WriteCapacityUnits: aws.Int64(5),
@@ -131,7 +187,16 @@ func (db *DB) EnsureIndex(col string, indexes ...nosql.Index) error {
 	if err != nil {
 		return err
 	}
-	return db.waitTable(context.TODO(), tbl)
+	if err = db.waitTable(context.TODO(), tbl); err != nil {
+		return err
+	}
+	db.tables[col] = table{
+		name:      tbl,
+		compRange: len(primary.Fields) > 2,
+		primary:   primary,
+		secondary: secondary,
+	}
+	return nil
 }
 
 const timeFormat = time.RFC3339Nano
@@ -155,6 +220,12 @@ func toAwsValue(v nosql.Value) *dynamodb.AttributeValue {
 	switch v := v.(type) {
 	case nil:
 		return &dynamodb.AttributeValue{NULL: aws.Bool(true)}
+	case nosql.Key:
+		ss := make([]*string, 0, len(v))
+		for _, k := range v {
+			ss = append(ss, aws.String(k))
+		}
+		return &dynamodb.AttributeValue{SS: ss}
 	case nosql.Document:
 		_, ok1 := v[fldType]
 		_, ok2 := v[fldVal]
@@ -195,6 +266,12 @@ func fromAwsValue(v *dynamodb.AttributeValue) nosql.Value {
 	switch {
 	case v.NULL != nil && *v.NULL:
 		return nil
+	case v.SS != nil: // pk
+		key := make(nosql.Key, 0, len(v.SS))
+		for _, s := range v.SS {
+			key = append(key, *s)
+		}
+		return key
 	case v.M != nil:
 		if typ := v.M[fldType]; typ != nil && typ.S != nil {
 			val := v.M[fldVal]
@@ -215,12 +292,6 @@ func fromAwsValue(v *dynamodb.AttributeValue) nosql.Value {
 		arr := make(nosql.Array, 0, len(v.L))
 		for _, s := range v.L {
 			arr = append(arr, fromAwsValue(s))
-		}
-		return arr
-	case v.SS != nil:
-		arr := make(nosql.Array, 0, len(v.SS))
-		for _, s := range v.SS {
-			arr = append(arr, nosql.String(*s))
 		}
 		return arr
 	case v.S != nil:
@@ -260,35 +331,45 @@ func fromAwsDoc(d map[string]*dynamodb.AttributeValue) nosql.Document {
 	return m
 }
 
-func genID() string {
-	return uuid.NewUUID().String()
+func genKey() nosql.Key {
+	return nosql.Key{uuid.NewUUID().String()}
 }
 
-func (db *DB) Insert(col string, id string, d nosql.Document) (string, error) {
-	if id == "" {
-		id = genID()
+func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
+	if key == nil {
+		key = genKey()
 	}
+	tbl := db.tables[col]
 	item := toAwsDoc(d)
-	item[nosql.IDField] = str(id)
+	for i, f := range tbl.primary.Fields {
+		item[f] = str(key[i])
+	}
+	if tbl.compRange {
+		item[fldRange] = tbl.rangeKey(key)
+	}
+	cond := make([]string, 0, len(tbl.primary.Fields))
+	names := make(map[string]*string, cap(cond))
+	for i, f := range tbl.primary.Fields {
+		name := fmt.Sprintf("k%d", i+1)
+		cond = append(cond, "attribute_not_exists(#"+name+")")
+		names["#"+name] = aws.String(f)
+	}
 	_, err := db.db.PutItem(&dynamodb.PutItemInput{
-		TableName:           db.col(col),
-		ConditionExpression: aws.String("attribute_not_exists(#id)"),
-		ExpressionAttributeNames: map[string]*string{
-			"#id": aws.String(nosql.IDField),
-		},
+		TableName:                tbl.name,
+		ConditionExpression:      aws.String(strings.Join(cond, " AND ")),
+		ExpressionAttributeNames: names,
 		Item: item,
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return id, nil
+	return key, nil
 }
-func (db *DB) FindByID(col string, id string) (nosql.Document, error) {
+func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
+	tbl := db.tables[col]
 	resp, err := db.db.GetItem(&dynamodb.GetItemInput{
 		TableName: db.col(col),
-		Key: map[string]*dynamodb.AttributeValue{
-			nosql.IDField: str(id),
-		},
+		Key:       tbl.getKey(key),
 	})
 	if err != nil {
 		return nil, convError(err)
@@ -298,17 +379,20 @@ func (db *DB) FindByID(col string, id string) (nosql.Document, error) {
 	return fromAwsDoc(resp.Item), nil
 }
 func (db *DB) Query(col string) nosql.Query {
-	return &Query{db: db.db, col: db.col(col), f: newFilter()}
+	tbl := db.tables[col]
+	return &Query{db: db.db, tbl: &tbl, f: newFilter()}
 }
-func (db *DB) Update(col string, id string) nosql.Update {
+func (db *DB) Update(col string, key nosql.Key) nosql.Update {
+	tbl := db.tables[col]
 	return &Update{
-		db: db.db, col: db.col(col), id: id,
+		db: db.db, tbl: &tbl, key: key,
 		names: make(map[string]*string),
 		vals:  make(map[string]*dynamodb.AttributeValue),
 	}
 }
 func (db *DB) Delete(col string) nosql.Delete {
-	return &Delete{db: db.db, col: db.col(col), f: newFilter()}
+	tbl := db.tables[col]
+	return &Delete{db: db.db, tbl: &tbl, f: newFilter()}
 }
 
 func newFilter() Filter {
@@ -414,7 +498,7 @@ func (fl *Filter) Append(filters []nosql.FieldFilter) {
 
 type Query struct {
 	db    *dynamodb.DynamoDB
-	col   *string
+	tbl   *table
 	limit int
 
 	f Filter
@@ -431,7 +515,7 @@ func (q *Query) Limit(n int) nosql.Query {
 func (q *Query) build() *dynamodb.ScanInput {
 	// TODO: split id into hash and range keys and run Query instead of Scan
 	qu := &dynamodb.ScanInput{
-		TableName:                 q.col,
+		TableName:                 q.tbl.name,
 		FilterExpression:          q.f.Expr(),
 		ExpressionAttributeNames:  q.f.Names(),
 		ExpressionAttributeValues: q.f.Values(),
@@ -459,16 +543,17 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 	} else if len(resp.Items) == 0 {
 		return nil, nosql.ErrNotFound
 	}
-	return fromAwsDoc(resp.Items[0]), nil
+	return q.tbl.convDoc(resp.Items[0]), nil
 }
 func (q *Query) Iterate() nosql.DocIterator {
 	qu := q.build()
-	return &Iterator{db: q.db, q: qu}
+	return &Iterator{db: q.db, q: qu, tbl: q.tbl}
 }
 
 type Iterator struct {
-	db *dynamodb.DynamoDB
-	q  *dynamodb.ScanInput
+	db  *dynamodb.DynamoDB
+	tbl *table
+	q   *dynamodb.ScanInput
 
 	buf []map[string]*dynamodb.AttributeValue
 	i   int
@@ -515,47 +600,53 @@ func (it *Iterator) item() map[string]*dynamodb.AttributeValue {
 	}
 	return nil
 }
-func (it *Iterator) ID() string {
-	f := it.item()[nosql.IDField]
-	if f != nil && f.S != nil {
-		return string(*f.S)
+func (it *Iterator) Key() nosql.Key {
+	m := it.item()
+	if m == nil {
+		return nil
 	}
-	return ""
+	key := make(nosql.Key, 0, len(it.tbl.primary.Fields))
+	for _, f := range it.tbl.primary.Fields {
+		v := ""
+		if av := m[f]; av != nil && av.S != nil {
+			v = *av.S
+		}
+		key = append(key, v)
+	}
+	return key
 }
 func (it *Iterator) Doc() nosql.Document {
-	return fromAwsDoc(it.item())
+	return it.tbl.convDoc(it.item())
 }
 
 type Delete struct {
-	db  *dynamodb.DynamoDB
-	col *string
-	ids []string
-	f   Filter
+	db   *dynamodb.DynamoDB
+	tbl  *table
+	keys []nosql.Key
+	f    Filter
 }
 
 func (d *Delete) WithFields(filters ...nosql.FieldFilter) nosql.Delete {
 	d.f.Append(filters)
 	return d
 }
-func (d *Delete) IDs(ids ...string) nosql.Delete {
-	d.ids = append(d.ids, ids...)
+func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
+	d.keys = append(d.keys, keys...)
 	return d
 }
 func (d *Delete) Do(ctx context.Context) error {
-	if len(d.ids) == 0 {
+	if len(d.keys) == 0 {
 		return fmt.Errorf("expected one or more object ids")
 	}
 	req := dynamodb.DeleteItemInput{
-		TableName:                 d.col,
+		TableName:                 d.tbl.name,
 		ConditionExpression:       d.f.Expr(),
 		ExpressionAttributeNames:  d.f.Names(),
 		ExpressionAttributeValues: d.f.Values(),
 	}
-	for _, id := range d.ids {
+	for _, key := range d.keys {
 		r := req
-		r.Key = map[string]*dynamodb.AttributeValue{
-			nosql.IDField: str(id),
-		}
+		r.Key = d.tbl.getKey(key)
 		_, err := d.db.DeleteItem(&r)
 		if e, ok := err.(awserr.Error); ok {
 			switch e.Code() {
@@ -572,8 +663,8 @@ func (d *Delete) Do(ctx context.Context) error {
 
 type Update struct {
 	db  *dynamodb.DynamoDB
-	col *string
-	id  string
+	tbl *table
+	key nosql.Key
 
 	add    []string
 	set    []string
@@ -611,7 +702,16 @@ func (u *Update) Push(field string, v nosql.Value) nosql.Update {
 func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	u.upsert = true
 	upsert := toAwsDoc(d)
-	delete(upsert, nosql.IDField)
+	if u.tbl.compRange {
+		delete(upsert, fldRange)
+	}
+	for i, f := range u.tbl.primary.Fields {
+		if u.tbl.compRange && i != 0 {
+			// we should not remove pk fields for composite range key case
+			break
+		}
+		delete(upsert, f)
+	}
 	for k, v := range upsert {
 		kl := strings.ToLower(k)
 		if _, ok := u.names["#"+kl]; !ok {
@@ -624,17 +724,19 @@ func (u *Update) Upsert(d nosql.Document) nosql.Update {
 }
 func (u *Update) Do(ctx context.Context) error {
 	req := &dynamodb.UpdateItemInput{
-		TableName: u.col,
-		Key: map[string]*dynamodb.AttributeValue{
-			nosql.IDField: str(u.id),
-		},
+		TableName: u.tbl.name,
+		Key:       u.tbl.getKey(u.key),
 	}
 	if len(u.names) != 0 {
 		req.ExpressionAttributeNames = u.names
 		req.ExpressionAttributeValues = u.vals
 	}
 	if !u.upsert {
-		req.ConditionExpression = aws.String("attribute_not_exists(" + nosql.IDField + ")")
+		cond := make([]string, 0, len(u.tbl.primary.Fields))
+		for _, f := range u.tbl.primary.Fields {
+			cond = append(cond, "attribute_not_exists("+f+")")
+		}
+		req.ConditionExpression = aws.String(strings.Join(cond, " AND "))
 	}
 	upd := ""
 	if len(u.add) != 0 {

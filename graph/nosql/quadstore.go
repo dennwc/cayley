@@ -177,12 +177,15 @@ func ensureIndexes(db Database) error {
 }
 
 func (qs *QuadStore) getIDForQuad(t quad.Quad) Key {
-	return Key{
+	key := Key{
 		hashOf(t.Subject),
 		hashOf(t.Predicate),
 		hashOf(t.Object),
-		hashOf(t.Label),
 	}
+	if h := hashOf(t.Label); h != "" {
+		key = append(key, h)
+	}
+	return key
 }
 
 func hashOf(s quad.Value) string {
@@ -248,7 +251,7 @@ func (qs *QuadStore) updateQuad(ctx context.Context, q quad.Quad, key Key, proc 
 		panic(fmt.Errorf("unexpected key: %v", key))
 	}
 	err := qs.db.Update(colQuads, qs.getIDForQuad(q)).Upsert(doc).
-		Push(setname, key).Do(ctx)
+		Inc(setname, 1).Do(ctx)
 	if err != nil {
 		clog.Errorf("Error: %v", err)
 	}
@@ -256,9 +259,9 @@ func (qs *QuadStore) updateQuad(ctx context.Context, q quad.Quad, key Key, proc 
 }
 
 func checkQuadValid(q Document) bool {
-	added, _ := q[fldAdded].(Array)
-	deleted, _ := q[fldDeleted].(Array)
-	return len(added) > len(deleted)
+	added, _ := q[fldAdded].(Int)
+	deleted, _ := q[fldDeleted].(Int)
+	return added > deleted
 }
 
 func (qs *QuadStore) checkValidQuad(key []string) bool {
