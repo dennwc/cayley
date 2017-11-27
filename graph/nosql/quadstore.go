@@ -219,7 +219,7 @@ func (qs *QuadStore) updateNodeBy(ctx context.Context, name quad.Value, inc int)
 		clog.Errorf("Error updating node: %v", err)
 	}
 	if inc < 0 {
-		err = qs.db.Delete(colNodes).IDs(key).WithFields(FieldFilter{
+		err = qs.db.Delete(colNodes).Keys(key).WithFields(FieldFilter{
 			Path:   []string{fldSize},
 			Filter: Equal,
 			Value:  Int(0),
