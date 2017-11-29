@@ -1,0 +1,9 @@
+# Ouch, prototype driver for CouchDB/PouchDB
+
+To run "gopherjs test -v" you must "npm install pouchdb" (which actually runs on top of levelDB when not in memory mode) 
+
+
+Note from Discussion forum, re future nosql API alterations at https://discourse.cayley.io/t/running-cayley-in-the-browser/960/13
+
+* I suggest that all the Database interface methods have context as the first parameter, and that context is removed from all the "child" methods (like Query.One).
+* Reply from dennwc37: This might not work well for DocIterator - it might be passed around and should use the context of the last caller, not the first one. I would say it make sense we can add contexts to Insert, FindByKey and EnsureIndexes and leave other builders as-is, since they already pass context in Do, One, Next, etc.
