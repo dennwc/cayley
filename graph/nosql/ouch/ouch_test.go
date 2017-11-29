@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	_ "github.com/go-kivik/memorydb"
 	"github.com/stretchr/testify/require"
@@ -44,6 +45,21 @@ func xTestOuchAll(t *testing.T) {
 	})
 }
 
+var allsorts = nosql.Document{
+	"Vnil": nil,
+	"VDocument": nosql.Document{
+		"Velement": nosql.String("test"),
+	},
+	"VArray":  nosql.Array{nosql.String("A"), nosql.String("B"), nosql.String("C")},
+	"VKey":    nosql.Key{"1", "2", "3"},
+	"VString": nosql.String("TEST"),
+	"VInt":    nosql.Int(42),
+	"VFloat":  nosql.Float(42.42),
+	"VBool":   nosql.Bool(true),
+	"VTime":   nosql.Time(time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)),
+	"VBytes":  nosql.Bytes{1, 2, 3, 4},
+}
+
 // TestMemstore does those tests possible using the memory backend (simple only)
 func TestMemstore(t *testing.T) {
 	defaultDriverName = "memory" // for testing only
@@ -51,6 +67,13 @@ func TestMemstore(t *testing.T) {
 	if err != nil {
 		t.Error("DB create error", defaultDriverName, dbc, err)
 		return
+	}
+	key, err := dbc.Insert("test", nil, allsorts)
+	if err != nil {
+		t.Error("insert error", err)
+	}
+	if err := dbc.(*DB).dcheck(key, allsorts); err != nil {
+		t.Error(err)
 	}
 	err = dbc.Close()
 	if err != nil {

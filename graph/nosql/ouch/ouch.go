@@ -2,6 +2,7 @@ package ouch
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -14,39 +15,61 @@ import (
 	"github.com/flimzy/kivik"
 )
 
-// DEBUG panic or trace
+// DEBUG trace rather than panic
 func dpanic(s string) {
 	println(s)
 }
 
 // DEBUG check stored document is what we expect
-func (db *DB) dcheck(key nosql.Key, d nosql.Document) {
+// TODO MOVE TO TEST FILE
+func (db *DB) dcheck(key nosql.Key, d nosql.Document) error {
 	col := string(d[collectionField].(nosql.String))
 	decoded, err := db.FindByKey(col, key)
 
 	if err != nil {
-		fmt.Println("DEBUG FindByKey '", key, "' error:", err)
-		return
+		return fmt.Errorf("unable to find record to check FindByKey '%v' error: %v", key, err)
 	}
 
-	dcompare(decoded, d)
+	return dcompare(decoded, d)
 }
-func dcompare(decoded, d nosql.Document) {
-	// 	decoded, reflect.DeepEqual(decoded, d))
+
+func dcompare(decoded, d nosql.Document) error {
 	for k, v := range decoded {
 		if k[0] != '_' { // _ fields should have changed
 			switch x := v.(type) {
 			case nosql.Document:
-				dcompare(d[k].(nosql.Document), x)
+				if err := dcompare(d[k].(nosql.Document), x); err != nil {
+					return err
+				}
 			case nosql.Key:
 				for i, kv := range x {
 					if d[k].(nosql.Key)[i] != kv {
-						fmt.Printf("DEBUG decoded key %s not-equal\n", k)
+						return fmt.Errorf("decoded key %s not-equal original %v", k)
+					}
+				}
+			case nosql.Bytes:
+				for i, kv := range x {
+					if d[k].(nosql.Bytes)[i] != kv {
+						return fmt.Errorf("bytes %s not-equal", k)
+					}
+				}
+			case nosql.Array:
+				_, ok := d[k].(nosql.Array)
+				if !ok {
+					return fmt.Errorf("decoded array not-equal original %s %v %T %v %T", k, v, v, d[k], d[k])
+				}
+				// check contents of arrays
+				for i, kv := range x {
+					if err := dcompare(
+						nosql.Document{k: d[k].(nosql.Array)[i]},
+						nosql.Document{k: kv},
+					); err != nil {
+						return err
 					}
 				}
 			default:
 				if d[k] != v {
-					fmt.Printf("DEBUG decoded not-equal %s %v %T %v %T\n", k, v, v, d[k], d[k])
+					return fmt.Errorf("decoded value not-equal original %s %v %T %v %T", k, v, v, d[k], d[k])
 				}
 			}
 		}
@@ -55,20 +78,42 @@ func dcompare(decoded, d nosql.Document) {
 		if k[0] != '_' { // _ fields should have changed
 			switch x := v.(type) {
 			case nosql.Document:
-				dcompare(x, decoded[k].(nosql.Document))
+				if err := dcompare(x, decoded[k].(nosql.Document)); err != nil {
+					return err
+				}
+			case nosql.Bytes:
+				for i, kv := range x {
+					if decoded[k].(nosql.Bytes)[i] != kv {
+						return fmt.Errorf("bytes %s not-equal", k)
+					}
+				}
 			case nosql.Key:
 				for i, kv := range x {
 					if decoded[k].(nosql.Key)[i] != kv {
-						fmt.Printf("DEBUG k key %s not-equal\n", k)
+						return fmt.Errorf("keys %s not-equal", k)
+					}
+				}
+			case nosql.Array: // TODO
+				_, ok := decoded[k].(nosql.Array)
+				if !ok {
+					return fmt.Errorf("array not-equal %s %v %T %v %T", k, v, v, decoded[k], decoded[k])
+				}
+				for i, kv := range x {
+					if err := dcompare(
+						nosql.Document{k: decoded[k].(nosql.Array)[i]},
+						nosql.Document{k: kv},
+					); err != nil {
+						return err
 					}
 				}
 			default:
 				if decoded[k] != v {
-					fmt.Printf("DEBUG d not-equal %s %v %T %v %T\n", k, v, v, decoded[k], decoded[k])
+					return fmt.Errorf("value not-equal %s %v %T %v %T", k, v, v, decoded[k], decoded[k])
 				}
 			}
 		}
 	}
+	return nil
 }
 
 const Type = "ouch"
@@ -135,9 +180,9 @@ func Create(addr string, opt graph.Options) (nosql.Database, error) {
 
 func Open(addr string, opt graph.Options) (nosql.Database, error) {
 	create := false
-	if opt["driver"] == "memory" { // a blank database, intended for testing
-		create = true
-	}
+	// if opt["driver"] == "memory" { // a blank database, intended for testing
+	// 	create = true
+	// }
 	return dialDB(create, addr, opt)
 }
 
@@ -194,16 +239,16 @@ func toInterfaceValue(k string, v nosql.Value) (string, interface{}) {
 		return k + "$Key", arr
 	case nosql.String:
 		return k, string(v)
-	case nosql.Int:
+	case nosql.Int: // special handling here, as type can't be inferred from json
 		return k + "$Int", int64(v)
 	case nosql.Float:
 		return k, float64(v)
 	case nosql.Bool:
 		return k, bool(v)
-	case nosql.Time:
-		return k, time.Time(v)
-	case nosql.Bytes:
-		return k, []byte(v)
+	case nosql.Time: // special handling here, as type can't be inferred from json
+		return k + "$Time", time.Time(v)
+	case nosql.Bytes: // special handling here, as type can't be inferred from json
+		return k + "$Bytes", []byte(v)
 	default:
 		panic(fmt.Errorf("unsupported type: %T", v))
 	}
@@ -242,6 +287,24 @@ func fromInterfaceValue(k string, v interface{}) (string, nosql.Value) {
 		}
 		return k, arr
 	case string:
+		if strings.HasSuffix(k, "$Bytes") {
+			kk := strings.TrimSuffix(k, "$Bytes")
+			byts, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				// TODO consider how to handle this error properly
+				return kk, nosql.Bytes(nil)
+			}
+			return kk, nosql.Bytes(byts)
+		}
+		if strings.HasSuffix(k, "$Time") {
+			kk := strings.TrimSuffix(k, "$Time")
+			tim, err := time.Parse(time.RFC3339, v)
+			if err != nil {
+				// TODO consider how to handle this error properly
+				return kk, nosql.Time(tim)
+			}
+			return kk, nosql.Time(tim)
+		}
 		return k, nosql.String(v)
 	case int:
 		return k, nosql.Int(v)
@@ -276,6 +339,7 @@ func fromInterfaceDoc(d map[string]interface{}) nosql.Document {
 }
 
 const idField = "_id"
+const revField = "_rev"
 const collectionField = "$Collection"
 
 func compKey(key []string) string {
@@ -284,12 +348,16 @@ func compKey(key []string) string {
 
 func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
 	dpanic("DB.Insert")
-
+	k, _, e := db.insert(col, key, d)
+	return k, e
+}
+func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, nosql.String, error) {
+	dpanic("DB.insert")
 	fmt.Println("DEBUG INSERT", col, key)
 	fmt.Printf("doc: %#v\n", d)
 
 	if d == nil {
-		return nil, errors.New("no document to insert")
+		return nil, "", errors.New("no document to insert")
 	}
 	d[collectionField] = nosql.String(col)
 
@@ -300,18 +368,21 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 
 	interfaceDoc := toInterfaceDoc(d)
 
-	ouchID, _, err := db.db.CreateDoc(context.TODO(), interfaceDoc)
+	ouchID, rev, err := db.db.CreateDoc(context.TODO(), interfaceDoc)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	if cK == "" {
 		key = nosql.Key([]string{ouchID}) // key auto-created
 		fmt.Println("DEBUG Created:", key)
 	}
-	db.dcheck(key, d)
 
-	return key, nil
+	if err := db.dcheck(key, d); err != nil {
+		return nil, "", err
+	}
+
+	return key, nosql.String(rev), nil
 }
 
 func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
@@ -485,14 +556,11 @@ func (u *Update) Do(ctx context.Context) error {
 			return err
 		} else {
 			orig = u.update
-			_, err = u.db.Insert(col, u.key, orig)
+			_, rev, err := u.db.insert(col, u.key, orig)
 			if err != nil {
 				return err
 			}
-			orig, err = u.db.FindByKey(col, u.key) // to get the correct "_rev" - TODO make more efficient!
-			if err != nil {
-				return err
-			}
+			orig[revField] = rev
 		}
 	} else {
 		return err
@@ -526,7 +594,9 @@ func (u *Update) Do(ctx context.Context) error {
 		return err
 	}
 
-	u.db.dcheck(u.key, orig)
+	if err := u.db.dcheck(u.key, orig); err != nil {
+		return err
+	}
 
 	return err
 }
