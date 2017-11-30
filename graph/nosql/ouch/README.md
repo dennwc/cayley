@@ -1,7 +1,9 @@
 # Ouch, prototype driver for CouchDB/PouchDB
 
-To run "gopherjs test -v" you must "npm install pouchdb" (which actually runs on top of levelDB when not in memory mode) 
+To run "gopherjs test -v" you must "npm install pouchdb" (which actually runs on top of levelDB). 
+When running "gopherjs test" from the ouch directory, a pouchdb.test directory will be created (in .gitignore).
 
+To run "go test" a publiclly accessable CouchDB must be at "http://127.0.0.1:5984/ouchtest"
 
 Note from Discussion forum, re future nosql API alterations at https://discourse.cayley.io/t/running-cayley-in-the-browser/960/13
 

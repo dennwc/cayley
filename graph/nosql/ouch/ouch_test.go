@@ -1,14 +1,13 @@
 package ouch
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"math"
 	"sort"
 	"testing"
 	"time"
 
-	_ "github.com/go-kivik/memorydb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cayleygraph/cayley"
@@ -115,30 +114,13 @@ func dcompare(decoded, d nosql.Document) error {
 
 func testDB() string {
 	switch defaultDriverName {
-	case "memory":
-		return "ouchtest"
+	case "pouch":
+		return "pouchdb.test"
+	case "couch":
+		return "http://127.0.0.1:5984/ouchtest"
 	default:
 		panic("bad defaultDriverName: " + defaultDriverName)
 	}
-}
-
-func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
-	qs, err := dialDB(true, testDB(), graph.Options{
-		"driver": "memory",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return qs, nil, func() {
-		qs.Close()
-	}
-}
-
-func xTestOuchAll(t *testing.T) {
-	defaultDriverName = "memory" // for initial testing only
-	nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
-		TimeInMs: true,
-	})
 }
 
 var allsorts = nosql.Document{
@@ -156,10 +138,9 @@ var allsorts = nosql.Document{
 	"VBytes":  nosql.Bytes{1, 2, 3, 4},
 }
 
-// TestMemstore does those tests possible using the memory backend (simple only)
+// TestMemstore does those tests possible using the memory backend only (very simple only)
 func TestMemstore(t *testing.T) {
-	defaultDriverName = "memory" // for testing only
-	dbc, err := Create(testDB(), graph.Options{})
+	dbc, err := Open(testDB(), graph.Options{})
 	if err != nil {
 		t.Error("DB create error", defaultDriverName, dbc, err)
 		return
@@ -170,6 +151,12 @@ func TestMemstore(t *testing.T) {
 	}
 	if err := dbc.(*DB).dcheck(key, allsorts); err != nil {
 		t.Error(err)
+	}
+	if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
+		t.Error(err)
+	}
+	if doc, err := dbc.(*DB).FindByKey("test", key); err != nosql.ErrNotFound {
+		t.Errorf("record not deleted - error: %v doc: %v", err, doc)
 	}
 	err = dbc.Close()
 	if err != nil {
@@ -196,16 +183,22 @@ func TestIntStr(t *testing.T) {
 	}
 }
 
-func xTestHelloWorld(t *testing.T) {
+func cTestHelloWorld(t *testing.T) {
 
-	defaultDriverName = "memory" // for initial testing only
+	trace = true
+	defer func() { trace = false }()
 
 	store, err := cayley.NewGraph("ouch", testDB(), graph.Options{})
 	if err != nil {
-		panic(err)
+		t.Error(err)
+		return
 	}
 
-	store.AddQuad(quad.Make("phrase of the day", "is of course", "Hello World!", nil))
+	err = store.AddQuad(quad.Make("phrase of the day", "is of course", "Hello World!", nil))
+	if err != nil {
+		t.Error(err)
+		return
+	}
 
 	// Now we create the path, to get to our data
 	p := cayley.StartPath(store, quad.String("phrase of the day")).Out(quad.String("is of course"))
@@ -219,7 +212,7 @@ func xTestHelloWorld(t *testing.T) {
 		fmt.Println(nativeValue)
 	})
 	if err != nil {
-		log.Fatalln(err)
+		t.Error(err)
 	}
 
 }
@@ -254,7 +247,6 @@ var simpleGraph = []quad.Quad{
 }
 
 func makeTestStore(data []quad.Quad) (graph.QuadStore, graph.QuadWriter, []pair) {
-	defaultDriverName = "memory" // for initial testing only
 
 	seen := make(map[string]struct{})
 	qs, err := graph.NewQuadStore("ouch", testDB(), graph.Options{})
@@ -304,4 +296,22 @@ func xTestSimpleGraph(t *testing.T) {
 	// 		require.Equal(t, test.value, int64(v))
 	// 	}
 	// }
+}
+
+// ALL TESTS...
+
+func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
+	qs, err := dialDB(true, testDB(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return qs, nil, func() {
+		qs.Close()
+	}
+}
+
+func xTestOuchAll(t *testing.T) {
+	nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
+		TimeInMs: true,
+	})
 }

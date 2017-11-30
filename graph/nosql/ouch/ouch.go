@@ -13,9 +13,13 @@ import (
 	"github.com/flimzy/kivik"
 )
 
+var trace bool
+
 // DEBUG trace rather than panic
 func dpanic(s string) {
-	println(s)
+	if trace {
+		println(s)
+	}
 }
 
 const Type = "ouch"
@@ -29,6 +33,7 @@ func init() {
 }
 
 func dialDB(create bool, addr string, opt graph.Options) (*DB, error) {
+	dpanic("dialDB")
 
 	driver := defaultDriverName
 	// if drivOpt, exists, err := opt.StringKey("driver"); exists {
@@ -38,7 +43,8 @@ func dialDB(create bool, addr string, opt graph.Options) (*DB, error) {
 	// 		return nil, err
 	// 	}
 	// }
-	fmt.Println("DEBUG dialDB", driver, create, addr, opt)
+
+	//fmt.Println("DEBUG dialDB", driver, create, addr, opt)
 
 	addrParsed, err := url.Parse(addr)
 	if err != nil {
@@ -81,11 +87,7 @@ func Create(addr string, opt graph.Options) (nosql.Database, error) {
 }
 
 func Open(addr string, opt graph.Options) (nosql.Database, error) {
-	create := false
-	// if opt["driver"] == "memory" { // a blank database, intended for testing
-	// 	create = true
-	// }
-	return dialDB(create, addr, opt)
+	return dialDB(false, addr, opt)
 }
 
 type collection struct {
@@ -109,13 +111,15 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
+	dpanic("DB.EnsureIndex")
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
-	fmt.Println("DEBUG DB.EnsureIndex", col, primary, secondary)
-	if db.driver != "memory" { // the memory driver does not implement this functionality
-		panic("DB.EnsureIndex")
+	//fmt.Println("DEBUG TODO DB.EnsureIndex", col, primary, secondary)
+	if db.driver == "memory" { // the memory driver does not implement this functionality
+		return nil
 	}
+	// TODO add indexes...
 	return nil
 
 }
@@ -135,8 +139,8 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 }
 func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, nosql.String, error) {
 	dpanic("DB.insert")
-	fmt.Println("DEBUG INSERT", col, key)
-	fmt.Printf("doc: %#v\n", d)
+	// fmt.Println("DEBUG INSERT", col, key)
+	// fmt.Printf("doc: %#v\n", d)
 
 	if d == nil {
 		return nil, "", errors.New("no document to insert")
@@ -150,7 +154,7 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, no
 
 	interfaceDoc := toInterfaceDoc(d)
 
-	fmt.Println("DEBUG", interfaceDoc)
+	//fmt.Println("DEBUG", interfaceDoc)
 
 	ouchID, rev, err := db.db.CreateDoc(context.TODO(), interfaceDoc)
 	if err != nil {
@@ -159,7 +163,7 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, no
 
 	if cK == "" {
 		key = nosql.Key([]string{ouchID}) // key auto-created
-		fmt.Println("DEBUG Created:", key)
+		//fmt.Println("DEBUG Created:", key)
 	}
 
 	// if err := db.dcheck(key, d); err != nil {
@@ -176,7 +180,7 @@ func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 
 	row, err := db.db.Get(context.TODO(), cK)
 	if err != nil {
-		fmt.Println("DEBUG", col, key, "NOT FOUND")
+		//fmt.Println("DEBUG", col, key, "NOT FOUND")
 		return nil, nosql.ErrNotFound
 		//return nil, err
 	}
@@ -188,7 +192,7 @@ func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 	}
 	decoded := fromInterfaceDoc(rowDoc)
 
-	fmt.Println("DEBUG", col, key, "FOUND", decoded)
+	//fmt.Println("DEBUG", col, key, "FOUND", decoded)
 
 	return decoded, nil
 }
@@ -199,7 +203,7 @@ func (db *DB) Query(col string) nosql.Query {
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	dpanic("DB.Update")
-	fmt.Println("DEBUG ", col, key)
+	//fmt.Println("DEBUG ", col, key)
 	return &Update{db: db, col: col, key: key, update: nosql.Document{
 		collectionField: nosql.String(col),
 	}}
@@ -207,7 +211,7 @@ func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 func (db *DB) Delete(col string) nosql.Delete {
 	dpanic("DB.Delete")
 
-	return &Delete{col: col}
+	return &Delete{db: db, col: col}
 }
 
 type Query struct {
@@ -271,20 +275,37 @@ func (it *Iterator) Doc() nosql.Document {
 }
 
 type Delete struct {
+	db  *DB
 	col string
 	// query TODO
+	keys []nosql.Key
 }
 
 func (d *Delete) WithFields(filters ...nosql.FieldFilter) nosql.Delete {
 	panic("Delete.WithFields")
-	return nil
+	return d
 }
 func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
-	panic("Delete.Keys")
-	return nil
+	dpanic("Delete.Keys")
+	d.keys = append(d.keys, keys...)
+	return d
 }
 func (d *Delete) Do(ctx context.Context) error {
-	panic("Delete.Do")
+	dpanic("Delete.Do")
+	seen := make(map[string]bool)
+	for _, k := range d.keys {
+		if !seen[compKey(k)] {
+			doc, err := d.db.FindByKey(d.col, k)
+			if err != nil {
+				return err
+			}
+			_, err = d.db.db.Delete(ctx, compKey(k), string(doc[revField].(nosql.String)))
+			if err != nil {
+				return err
+			}
+		}
+		seen[compKey(k)] = true
+	}
 	return nil
 }
 
@@ -310,13 +331,13 @@ func (u *Update) Inc(field string, dn int) nosql.Update {
 
 func (u *Update) Push(field string, v nosql.Value) nosql.Update {
 	dpanic("Update.Push")
-	fmt.Println("DEBUG", field, v)
+	//fmt.Println("DEBUG", field, v)
 	u.push[field] = v
 	return u
 }
 func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	dpanic("Update.Upsert")
-	fmt.Println("DEBUG", d)
+	//fmt.Println("DEBUG", d)
 	u.upsert = true
 	for k, v := range d {
 		u.update[k] = v
