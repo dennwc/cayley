@@ -2,6 +2,7 @@ package ouch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -199,7 +200,7 @@ func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 
 func (db *DB) Query(col string) nosql.Query {
 	dpanic("DB.Query")
-	return &Query{col: col}
+	return &Query{db: db, ouchQuery: ouchQuery{Selector: map[string]interface{}{collectionField: "S" + col}}}
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	dpanic("DB.Update")
@@ -214,29 +215,76 @@ func (db *DB) Delete(col string) nosql.Delete {
 	return &Delete{db: db, col: col}
 }
 
+type ouchQuery struct {
+	Selector map[string]interface{} `json:"selector"`
+	Limit    int                    `json:"limit,omitempty"`
+}
+
 type Query struct {
-	col   string
-	limit int
-	//query TODO
-	filters []nosql.FieldFilter
+	db *DB
+	ouchQuery
 }
 
 func (q *Query) WithFields(filters ...nosql.FieldFilter) nosql.Query {
 	dpanic("Query.WithFields")
-	q.filters = append(q.filters, filters...)
+
+	for _, filter := range filters {
+		test := ""
+		switch filter.Filter {
+		case nosql.Equal:
+			test = "$eq"
+		case nosql.NotEqual:
+			test = "$ne"
+		case nosql.GT:
+			test = "$gt"
+		case nosql.GTE:
+			test = "$gte"
+		case nosql.LT:
+			test = "$lt"
+		case nosql.LTE:
+			test = "$lte"
+		default:
+			panic("unknown nosqlFilter " + string(rune(filter.Filter)+'0'))
+		}
+		term := map[string]interface{}{test: toInterfaceValue(".", filter.Value)}
+		for w := len(filter.Path) - 1; w >= 0; w-- {
+			if w == 0 {
+				q.ouchQuery.Selector[filter.Path[0]] = term
+			} else {
+				term = map[string]interface{}{filter.Path[w]: term}
+			}
+		}
+	}
+
+	fmt.Printf("DEBUG query %#v\n", q)
 	return q
 }
 
 func (q *Query) Limit(n int) nosql.Query {
 	dpanic("Query.Limit")
-	q.limit = n
+	q.ouchQuery.Limit = n
 	return q
 }
 
 func (q *Query) Count(ctx context.Context) (int64, error) {
-	panic("Query.Count")
+	dpanic("Query.Count")
 
-	return 0, nil
+	byts, err := json.MarshalIndent(q.ouchQuery, " ", " ")
+	fmt.Println("DEBUG count marshal", err, string(byts))
+
+	rows, err := q.db.db.Find(ctx, q.ouchQuery)
+	fmt.Println("DEBUG err", err)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	var count int64
+	for rows.Next() {
+		count++
+	}
+	fmt.Println("DEBUG count", count)
+	return count, nil
 }
 func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 	panic("Query.One")
@@ -244,40 +292,54 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 	return nil, nil
 }
 func (q *Query) Iterate() nosql.DocIterator {
-	panic("Query.Iterate")
+	dpanic("Query.Iterate")
 
-	return &Iterator{}
+	byts, err := json.MarshalIndent(q.ouchQuery, " ", " ")
+	fmt.Println("DEBUG count marshal", err, string(byts))
+
+	rows, err := q.db.db.Find(context.TODO(), q.ouchQuery)
+	return &Iterator{rows: rows, err: err}
+
 }
 
 type Iterator struct {
-	c *collection
+	err  error
+	rows *kivik.Rows
 }
 
 func (it *Iterator) Next(ctx context.Context) bool {
-	panic("Iterator.Next")
-	return false
+	dpanic("Iterator.Next")
+	if it.err != nil {
+		return false
+	}
+	return it.rows.Next()
 }
 func (it *Iterator) Err() error {
-	panic("Iterator.Err")
-	return nil
+	dpanic("Iterator.Err")
+	return it.err
 }
 func (it *Iterator) Close() error {
-	panic("Iterator.Close")
-	return nil
+	dpanic("Iterator.Close")
+	return it.rows.Close()
 }
 func (it *Iterator) Key() nosql.Key {
-	panic("Iterator.Key")
-	return nil
+	dpanic("Iterator.Key")
+	return nosql.Key{it.rows.ID()}
 }
 func (it *Iterator) Doc() nosql.Document {
-	panic("Iterator.Doc")
+	dpanic("Iterator.Doc")
+	doc := map[string]interface{}{}
+	err := it.rows.ScanDoc(&doc)
+	if err == nil {
+		return fromInterfaceDoc(doc)
+	}
+	fmt.Println("DEBUG err", err)
 	return nil
 }
 
 type Delete struct {
-	db  *DB
-	col string
-	// query TODO
+	db   *DB
+	col  string
 	keys []nosql.Key
 }
 
@@ -315,8 +377,8 @@ type Update struct {
 	key    nosql.Key
 	update nosql.Document
 	upsert bool
-	inc    map[string]int // is this the required logic???
-	push   map[string]nosql.Value
+	inc    map[string]int         // increment the named numeric field by the int
+	push   map[string]nosql.Value // replace the named field with the new value
 }
 
 func (u *Update) Inc(field string, dn int) nosql.Update {
@@ -369,25 +431,28 @@ func (u *Update) Do(ctx context.Context) error {
 			orig[revField] = rev
 		}
 	} else {
-		return err
+		if err != nil {
+			return err
+		}
+		for k, v := range u.update { // alter any changed fields
+			orig[k] = v
+		}
 	}
 
-	for k, v := range u.update {
+	for k, v := range u.push { // push new individual values
 		orig[k] = v
 	}
 
-	for k, v := range u.push { // TODO is this right?
-		orig[k] = v
-	}
-
-	for k, v := range u.inc { // TODO is this right?
+	for k, v := range u.inc { // increment numerical values
 		val, exists := orig[k]
 		if exists {
 			switch x := val.(type) {
 			case nosql.Int:
 				val = nosql.Int(int64(x) + int64(v))
+			case nosql.Float:
+				val = nosql.Float(float64(x) + float64(v))
 			default:
-				return errors.New("field '" + k + "' is not an integer")
+				return errors.New("field '" + k + "' is not a number")
 			}
 		} else {
 			val = nosql.Int(v)
@@ -395,14 +460,6 @@ func (u *Update) Do(ctx context.Context) error {
 		orig[k] = val
 	}
 
-	_, err = u.db.db.Put(context.TODO(), compKey(u.key), toInterfaceDoc(orig))
-	if err != nil {
-		return err
-	}
-
-	// if err := u.db.dcheck(u.key, orig); err != nil {
-	// 	return err
-	// }
-
+	_, err = u.db.db.Put(ctx, compKey(u.key), toInterfaceDoc(orig))
 	return err
 }

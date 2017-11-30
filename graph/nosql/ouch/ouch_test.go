@@ -112,15 +112,40 @@ func dcompare(decoded, d nosql.Document) error {
 	return nil
 }
 
-func testDB() string {
+func testDB() (string, error) {
+	var ret string
 	switch defaultDriverName {
 	case "pouch":
-		return "pouchdb.test"
+		ret = "pouchdb.test"
 	case "couch":
-		return "http://127.0.0.1:5984/ouchtest"
+		ret = "http://127.0.0.1:5984/ouchtest"
 	default:
 		panic("bad defaultDriverName: " + defaultDriverName)
 	}
+	return ret, deleteAllOuchDocs(ret)
+}
+
+func deleteAllOuchDocs(testDBname string) error {
+	db, err := Open(testDBname, graph.Options{})
+	if err != nil {
+		return fmt.Errorf("DB create error %v %v %v", defaultDriverName, db, err)
+	}
+	defer db.Close()
+
+	rows, err := db.(*DB).db.AllDocs(context.TODO())
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		fmt.Println("deleteAllOuchDocs", rows.ID())
+		err = db.Delete("").Keys(nosql.Key{rows.ID()}).Do(context.TODO())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var allsorts = nosql.Document{
@@ -140,11 +165,18 @@ var allsorts = nosql.Document{
 
 // TestMemstore does those tests possible using the memory backend only (very simple only)
 func TestMemstore(t *testing.T) {
-	dbc, err := Open(testDB(), graph.Options{})
+	dbName, err := testDB()
+	if err != nil {
+		t.Error("DB setup error", err)
+		return
+	}
+
+	dbc, err := Open(dbName, graph.Options{})
 	if err != nil {
 		t.Error("DB create error", defaultDriverName, dbc, err)
 		return
 	}
+
 	key, err := dbc.Insert("test", nil, allsorts)
 	if err != nil {
 		t.Error("insert error", err)
@@ -183,12 +215,18 @@ func TestIntStr(t *testing.T) {
 	}
 }
 
-func cTestHelloWorld(t *testing.T) {
+func TestHelloWorld(t *testing.T) {
+
+	dbName, err := testDB()
+	if err != nil {
+		t.Error("DB setup error", err)
+		return
+	}
 
 	trace = true
 	defer func() { trace = false }()
 
-	store, err := cayley.NewGraph("ouch", testDB(), graph.Options{})
+	store, err := cayley.NewGraph("ouch", dbName, graph.Options{})
 	if err != nil {
 		t.Error(err)
 		return
@@ -248,11 +286,17 @@ var simpleGraph = []quad.Quad{
 
 func makeTestStore(data []quad.Quad) (graph.QuadStore, graph.QuadWriter, []pair) {
 
-	seen := make(map[string]struct{})
-	qs, err := graph.NewQuadStore("ouch", testDB(), graph.Options{})
+	dbName, err := testDB()
 	if err != nil {
 		panic(err)
 	}
+
+	seen := make(map[string]struct{})
+	qs, err := graph.NewQuadStore("ouch", dbName, graph.Options{})
+	if err != nil {
+		panic(err)
+	}
+
 	var (
 		val int64
 		ind []pair
@@ -301,7 +345,11 @@ func xTestSimpleGraph(t *testing.T) {
 // ALL TESTS...
 
 func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
-	qs, err := dialDB(true, testDB(), nil)
+	dbName, err := testDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	qs, err := dialDB(true, dbName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
