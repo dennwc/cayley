@@ -112,25 +112,32 @@ func dcompare(decoded, d nosql.Document) error {
 	return nil
 }
 
-func testDB() (string, error) {
+func testDB(destroyDB bool) (string, error) {
 	var ret string
 	switch defaultDriverName {
 	case "pouch":
 		ret = "pouchdb.test"
 	case "couch":
-		ret = "http://127.0.0.1:5984/ouchtest"
+		ret = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"
 	default:
 		panic("bad defaultDriverName: " + defaultDriverName)
 	}
-	return ret, deleteAllOuchDocs(ret)
+	if err := deleteAllOuchDocs(ret, destroyDB); err != nil {
+		fmt.Println("DEBUG delete test db error: ", err)
+	}
+	return ret, nil
 }
 
-func deleteAllOuchDocs(testDBname string) error {
+func deleteAllOuchDocs(testDBname string, destroyDB bool) error {
 	db, err := Open(testDBname, graph.Options{})
 	if err != nil {
-		return fmt.Errorf("DB create error %v %v %v", defaultDriverName, db, err)
+		return fmt.Errorf("DB open error %v %v %v", defaultDriverName, db, err)
 	}
 	defer db.Close()
+
+	if destroyDB {
+		return db.(*DB).db.Client().DestroyDB(context.TODO(), testDBname)
+	}
 
 	rows, err := db.(*DB).db.AllDocs(context.TODO())
 	if err != nil {
@@ -165,13 +172,13 @@ var allsorts = nosql.Document{
 
 // TestMemstore does those tests possible using the memory backend only (very simple only)
 func TestMemstore(t *testing.T) {
-	dbName, err := testDB()
+	dbName, err := testDB(true)
 	if err != nil {
 		t.Error("DB setup error", err)
 		return
 	}
 
-	dbc, err := Open(dbName, graph.Options{})
+	dbc, err := Create(dbName, graph.Options{})
 	if err != nil {
 		t.Error("DB create error", defaultDriverName, dbc, err)
 		return
@@ -217,7 +224,7 @@ func TestIntStr(t *testing.T) {
 
 func TestHelloWorld(t *testing.T) {
 
-	dbName, err := testDB()
+	dbName, err := testDB(false)
 	if err != nil {
 		t.Error("DB setup error", err)
 		return
@@ -290,7 +297,7 @@ var simpleGraph = []quad.Quad{
 
 func makeTestStore(data []quad.Quad) (graph.QuadStore, graph.QuadWriter, []pair) {
 
-	dbName, err := testDB()
+	dbName, err := testDB(false)
 	if err != nil {
 		panic(err)
 	}
@@ -327,29 +334,18 @@ type pair struct {
 	value int64
 }
 
-func xTestSimpleGraph(t *testing.T) {
-	qs, _, index := makeTestStore(simpleGraph)
+func TestSimpleGraph(t *testing.T) {
+	qs, _, _ := makeTestStore(simpleGraph)
 
-	t.Log(qs, index)
+	require.Equal(t, int64(11), qs.Size()) // 22 in original memstore
 
-	require.Equal(t, int64(22), qs.Size())
-
-	// TODO replicate
-	// for _, test := range index {
-	// 	v := qs.ValueOf(quad.Raw(test.query))
-	// 	switch v := v.(type) {
-	// 	default:
-	// 		t.Errorf("ValueOf(%q) returned unexpected type, got:%T expected int64", test.query, v)
-	// 	case bnode:
-	// 		require.Equal(t, test.value, int64(v))
-	// 	}
-	// }
+	// TODO more tests here ?
 }
 
 // ALL TESTS...
 
 func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
-	dbName, err := testDB()
+	dbName, err := testDB(true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +358,7 @@ func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
 	}
 }
 
-func xTestOuchAll(t *testing.T) {
+func TestOuchAll(t *testing.T) {
 	nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
 		TimeInMs: true,
 	})

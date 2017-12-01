@@ -56,9 +56,11 @@ func dialDB(create bool, addr string, opt graph.Options) (*DB, error) {
 	}
 
 	pathParts := strings.Split(addrParsed.Path, "/")
-	dbName := "cayleygraph"
+	dbName := ""
 	if len(pathParts) > 0 && addr != "" {
 		dbName = pathParts[len(pathParts)-1]
+	} else {
+		return nil, errors.New("unable to decypher database name from: " + addr)
 	}
 	dsn := strings.TrimSuffix(addr, dbName)
 
@@ -284,7 +286,9 @@ func (q *Query) Count(ctx context.Context) (int64, error) {
 	return count, nil
 }
 func (q *Query) One(ctx context.Context) (nosql.Document, error) {
-	panic("Query.One")
+	dpanic("Query.One")
+
+	//TODO!
 
 	return nil, nil
 }
@@ -351,7 +355,8 @@ type Delete struct {
 }
 
 func (d *Delete) WithFields(filters ...nosql.FieldFilter) nosql.Delete {
-	panic("Delete.WithFields")
+	dpanic("Delete.WithFields")
+	// TODO!
 	return d
 }
 func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {

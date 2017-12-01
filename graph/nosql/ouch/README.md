@@ -5,7 +5,7 @@ Also need to "npm install pouchdb-find" for queries.
 When running "gopherjs test" from the ouch directory, a pouchdb.test directory will be created (in .gitignore).
 
 
-To run "go test" a publiclly accessable CouchDB must be at "http://127.0.0.1:5984/ouchtest"
+To run "go test" a publiclly accessable CouchDB must be at "http://127.0.0.1:5984/ouchtest" with an administrator account testusername:testpassword (basic auth only, as this also works from the browser).
 
 Note from Discussion forum, re future nosql API alterations at https://discourse.cayley.io/t/running-cayley-in-the-browser/960/13
 
