@@ -1,7 +1,9 @@
 # Ouch, prototype driver for CouchDB/PouchDB
 
 To run "gopherjs test -v" you must "npm install pouchdb" (which actually runs on top of levelDB). 
+Also need to "npm install pouchdb-find" for queries.
 When running "gopherjs test" from the ouch directory, a pouchdb.test directory will be created (in .gitignore).
+
 
 To run "go test" a publiclly accessable CouchDB must be at "http://127.0.0.1:5984/ouchtest"
 

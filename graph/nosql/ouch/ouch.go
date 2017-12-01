@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
+
+	"github.com/gopherjs/gopherjs/js"
 
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/nosql"
@@ -200,7 +203,7 @@ func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 
 func (db *DB) Query(col string) nosql.Query {
 	dpanic("DB.Query")
-	return &Query{db: db, ouchQuery: ouchQuery{Selector: map[string]interface{}{collectionField: "S" + col}}}
+	return &Query{db: db, ouchQuery: map[string]interface{}{"selector": map[string]interface{}{collectionField: map[string]interface{}{"$eq": "S" + col}}}}
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	dpanic("DB.Update")
@@ -215,14 +218,9 @@ func (db *DB) Delete(col string) nosql.Delete {
 	return &Delete{db: db, col: col}
 }
 
-type ouchQuery struct {
-	Selector map[string]interface{} `json:"selector"`
-	Limit    int                    `json:"limit,omitempty"`
-}
-
 type Query struct {
-	db *DB
-	ouchQuery
+	db        *DB
+	ouchQuery map[string]interface{}
 }
 
 func (q *Query) WithFields(filters ...nosql.FieldFilter) nosql.Query {
@@ -249,31 +247,30 @@ func (q *Query) WithFields(filters ...nosql.FieldFilter) nosql.Query {
 		term := map[string]interface{}{test: toInterfaceValue(".", filter.Value)}
 		for w := len(filter.Path) - 1; w >= 0; w-- {
 			if w == 0 {
-				q.ouchQuery.Selector[filter.Path[0]] = term
+				q.ouchQuery["selector"].(map[string]interface{})[filter.Path[0]] = term
 			} else {
 				term = map[string]interface{}{filter.Path[w]: term}
 			}
 		}
 	}
 
-	fmt.Printf("DEBUG query %#v\n", q)
+	//fmt.Printf("DEBUG query %#v\n", q)
 	return q
 }
 
 func (q *Query) Limit(n int) nosql.Query {
 	dpanic("Query.Limit")
-	q.ouchQuery.Limit = n
+	q.ouchQuery["limit"] = n
 	return q
 }
 
 func (q *Query) Count(ctx context.Context) (int64, error) {
 	dpanic("Query.Count")
 
-	byts, err := json.MarshalIndent(q.ouchQuery, " ", " ")
-	fmt.Println("DEBUG count marshal", err, string(byts))
+	q.debug()
 
 	rows, err := q.db.db.Find(ctx, q.ouchQuery)
-	fmt.Println("DEBUG err", err)
+	//fmt.Println("DEBUG err", err)
 	if err != nil {
 		return 0, err
 	}
@@ -283,7 +280,7 @@ func (q *Query) Count(ctx context.Context) (int64, error) {
 	for rows.Next() {
 		count++
 	}
-	fmt.Println("DEBUG count", count)
+	//fmt.Println("DEBUG count", count)
 	return count, nil
 }
 func (q *Query) One(ctx context.Context) (nosql.Document, error) {
@@ -293,13 +290,23 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 }
 func (q *Query) Iterate() nosql.DocIterator {
 	dpanic("Query.Iterate")
-
-	byts, err := json.MarshalIndent(q.ouchQuery, " ", " ")
-	fmt.Println("DEBUG count marshal", err, string(byts))
+	q.debug()
 
 	rows, err := q.db.db.Find(context.TODO(), q.ouchQuery)
 	return &Iterator{rows: rows, err: err}
 
+}
+
+func (q *Query) debug() {
+	if trace {
+		if runtime.GOARCH == "js" {
+			query := js.Global.Get("JSON").Call("stringify", q.ouchQuery).String()
+			fmt.Println("DEBUG query marshal JS", query)
+		} else {
+			byts, err := json.Marshal(q.ouchQuery)
+			fmt.Println("DEBUG query marshal", err, string(byts))
+		}
+	}
 }
 
 type Iterator struct {
@@ -333,7 +340,7 @@ func (it *Iterator) Doc() nosql.Document {
 	if err == nil {
 		return fromInterfaceDoc(doc)
 	}
-	fmt.Println("DEBUG err", err)
+	//fmt.Println("DEBUG err", err)
 	return nil
 }
 
@@ -383,7 +390,7 @@ type Update struct {
 
 func (u *Update) Inc(field string, dn int) nosql.Update {
 	dpanic("Update.Inc")
-	fmt.Println(field, dn)
+	//fmt.Println("DEBUG",field, dn)
 	if u.inc == nil {
 		u.inc = make(map[string]int)
 	}

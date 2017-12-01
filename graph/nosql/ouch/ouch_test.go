@@ -139,7 +139,7 @@ func deleteAllOuchDocs(testDBname string) error {
 	defer rows.Close()
 
 	for rows.Next() {
-		fmt.Println("deleteAllOuchDocs", rows.ID())
+		//fmt.Println("deleteAllOuchDocs", rows.ID())
 		err = db.Delete("").Keys(nosql.Key{rows.ID()}).Do(context.TODO())
 		if err != nil {
 			return err
@@ -223,8 +223,8 @@ func TestHelloWorld(t *testing.T) {
 		return
 	}
 
-	trace = true
-	defer func() { trace = false }()
+	// trace = true
+	// defer func() { trace = false }()
 
 	store, err := cayley.NewGraph("ouch", dbName, graph.Options{})
 	if err != nil {
@@ -232,7 +232,8 @@ func TestHelloWorld(t *testing.T) {
 		return
 	}
 
-	err = store.AddQuad(quad.Make("phrase of the day", "is of course", "Hello World!", nil))
+	const helloWorld = "Hello World!"
+	err = store.AddQuad(quad.Make("phrase of the day", "is of course", helloWorld, nil))
 	if err != nil {
 		t.Error(err)
 		return
@@ -247,7 +248,10 @@ func TestHelloWorld(t *testing.T) {
 	// 3. Quad store, but we can omit it because we have already built path with it.
 	err = p.Iterate(nil).EachValue(nil, func(value quad.Value) {
 		nativeValue := quad.NativeOf(value) // this converts RDF values to normal Go types
-		fmt.Println(nativeValue)
+		//fmt.Println(nativeValue)
+		if nativeValue.(string) != helloWorld {
+			t.Errorf("NOT " + helloWorld)
+		}
 	})
 	if err != nil {
 		t.Error(err)
