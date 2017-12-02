@@ -4,140 +4,54 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/cayleygraph/cayley"
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/nosql"
 	"github.com/cayleygraph/cayley/graph/nosql/nosqltest"
 	"github.com/cayleygraph/cayley/quad"
-	"github.com/cayleygraph/cayley/writer"
+	"github.com/flimzy/kivik"
 )
 
-func (db *DB) dcheck(key nosql.Key, d nosql.Document) error {
-	col := string(d[collectionField].(nosql.String))
-	decoded, err := db.FindByKey(col, key)
-
-	if err != nil {
-		return fmt.Errorf("unable to find record to check FindByKey '%v' error: %v", key, err)
-	}
-
-	return dcompare(decoded, d)
-}
-
-func dcompare(decoded, d nosql.Document) error {
-	for k, v := range decoded {
-		if k[0] != '_' { // _ fields should have changed
-			switch x := v.(type) {
-			case nosql.Document:
-				if err := dcompare(d[k].(nosql.Document), x); err != nil {
-					return err
-				}
-			case nosql.Key:
-				for i, kv := range x {
-					if d[k].(nosql.Key)[i] != kv {
-						return fmt.Errorf("decoded key %s not-equal original %v", k)
-					}
-				}
-			case nosql.Bytes:
-				for i, kv := range x {
-					if d[k].(nosql.Bytes)[i] != kv {
-						return fmt.Errorf("bytes %s not-equal", k)
-					}
-				}
-			case nosql.Array:
-				_, ok := d[k].(nosql.Array)
-				if !ok {
-					return fmt.Errorf("decoded array not-equal original %s %v %T %v %T", k, v, v, d[k], d[k])
-				}
-				// check contents of arrays
-				for i, kv := range x {
-					if err := dcompare(
-						nosql.Document{k: d[k].(nosql.Array)[i]},
-						nosql.Document{k: kv},
-					); err != nil {
-						return err
-					}
-				}
-			default:
-				if d[k] != v {
-					return fmt.Errorf("decoded value not-equal original %s %v %T %v %T", k, v, v, d[k], d[k])
-				}
-			}
-		}
-	}
-	for k, v := range d {
-		if k[0] != '_' { // _ fields should have changed
-			switch x := v.(type) {
-			case nosql.Document:
-				if err := dcompare(x, decoded[k].(nosql.Document)); err != nil {
-					return err
-				}
-			case nosql.Bytes:
-				for i, kv := range x {
-					if decoded[k].(nosql.Bytes)[i] != kv {
-						return fmt.Errorf("bytes %s not-equal", k)
-					}
-				}
-			case nosql.Key:
-				for i, kv := range x {
-					if decoded[k].(nosql.Key)[i] != kv {
-						return fmt.Errorf("keys %s not-equal", k)
-					}
-				}
-			case nosql.Array: // TODO
-				_, ok := decoded[k].(nosql.Array)
-				if !ok {
-					return fmt.Errorf("array not-equal %s %v %T %v %T", k, v, v, decoded[k], decoded[k])
-				}
-				for i, kv := range x {
-					if err := dcompare(
-						nosql.Document{k: decoded[k].(nosql.Array)[i]},
-						nosql.Document{k: kv},
-					); err != nil {
-						return err
-					}
-				}
-			default:
-				if decoded[k] != v {
-					return fmt.Errorf("value not-equal %s %v %T %v %T", k, v, v, decoded[k], decoded[k])
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func testDB(destroyDB bool) (string, error) {
-	var ret string
+func testDB(DBshouldNotExist bool) ([]string, error) {
+	var ret []string
+	const remote = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"
 	switch defaultDriverName {
 	case "pouch":
-		ret = "pouchdb.test"
+		ret = []string{"pouchdb.test", remote} // test both local and remote db access
 	case "couch":
-		ret = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"
+		ret = []string{remote}
 	default:
 		panic("bad defaultDriverName: " + defaultDriverName)
 	}
-	if err := deleteAllOuchDocs(ret, destroyDB); err != nil {
-		fmt.Println("DEBUG delete test db error: ", err)
+	for _, r := range ret {
+		if err := deleteAllOuchDocs(r, DBshouldNotExist); err != nil {
+			fmt.Println("DEBUG delete test db", r, "error: ", err)
+		}
 	}
 	return ret, nil
 }
 
-func deleteAllOuchDocs(testDBname string, destroyDB bool) error {
+func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
+	if DBshouldNotExist {
+		client, err := kivik.New(context.TODO(), defaultDriverName, testDBname)
+		if err != nil {
+			return err
+		}
+		return client.DestroyDB(context.TODO(), testDBname)
+	}
+
 	db, err := Open(testDBname, graph.Options{})
 	if err != nil {
-		return fmt.Errorf("DB open error %v %v %v", defaultDriverName, db, err)
+		fmt.Printf("DEBUG deleteAllOuchDocs() failed open error:", err)
+		_, err = Create(testDBname, nil)
+		return err
 	}
 	defer db.Close()
-
-	if destroyDB {
-		return db.(*DB).db.Client().DestroyDB(context.TODO(), testDBname)
-	}
 
 	rows, err := db.(*DB).db.AllDocs(context.TODO())
 	if err != nil {
@@ -170,36 +84,44 @@ var allsorts = nosql.Document{
 	"VBytes":  nosql.Bytes{1, 2, 3, 4},
 }
 
-// TestMemstore does those tests possible using the memory backend only (very simple only)
-func TestMemstore(t *testing.T) {
-	dbName, err := testDB(true)
+// TestInsertDelete does very basic testing
+func TestInsertDelete(t *testing.T) {
+	// trace = true
+	// defer func() { trace = false }()
+
+	dbNames, err := testDB(false)
 	if err != nil {
 		t.Error("DB setup error", err)
 		return
 	}
 
-	dbc, err := Create(dbName, graph.Options{})
-	if err != nil {
-		t.Error("DB create error", defaultDriverName, dbc, err)
-		return
-	}
+	for _, dbName := range dbNames {
 
-	key, err := dbc.Insert("test", nil, allsorts)
-	if err != nil {
-		t.Error("insert error", err)
-	}
-	if err := dbc.(*DB).dcheck(key, allsorts); err != nil {
-		t.Error(err)
-	}
-	if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
-		t.Error(err)
-	}
-	if doc, err := dbc.(*DB).FindByKey("test", key); err != nosql.ErrNotFound {
-		t.Errorf("record not deleted - error: %v doc: %v", err, doc)
-	}
-	err = dbc.Close()
-	if err != nil {
-		t.Error("DB close error", err)
+		//fmt.Println("DEBUG dbName:", dbName)
+
+		dbc, err := Open(dbName, graph.Options{})
+		if err != nil {
+			t.Error("DB open error", defaultDriverName, dbName, err)
+			return
+		}
+
+		key, err := dbc.Insert("test", nil, allsorts)
+		if err != nil {
+			t.Error("insert error", err)
+		}
+		if err := dbc.(*DB).dcheck(key, allsorts); err != nil {
+			t.Error(err)
+		}
+		if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
+			t.Error(err)
+		}
+		if doc, err := dbc.(*DB).FindByKey("test", key); err != nosql.ErrNotFound {
+			t.Errorf("record not deleted - error: %v key: %v doc: %v", err, key, doc)
+		}
+		err = dbc.Close()
+		if err != nil {
+			t.Error("DB close error", err)
+		}
 	}
 }
 
@@ -224,7 +146,7 @@ func TestIntStr(t *testing.T) {
 
 func TestHelloWorld(t *testing.T) {
 
-	dbName, err := testDB(false)
+	dbNames, err := testDB(false)
 	if err != nil {
 		t.Error("DB setup error", err)
 		return
@@ -233,133 +155,69 @@ func TestHelloWorld(t *testing.T) {
 	// trace = true
 	// defer func() { trace = false }()
 
-	store, err := cayley.NewGraph("ouch", dbName, graph.Options{})
-	if err != nil {
-		t.Error(err)
-		return
-	}
+	for _, dbName := range dbNames {
 
-	const helloWorld = "Hello World!"
-	err = store.AddQuad(quad.Make("phrase of the day", "is of course", helloWorld, nil))
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	// Now we create the path, to get to our data
-	p := cayley.StartPath(store, quad.String("phrase of the day")).Out(quad.String("is of course"))
-
-	// Now we iterate over results. Arguments:
-	// 1. Optional context used for cancellation.
-	// 2. Flag to optimize query before execution.
-	// 3. Quad store, but we can omit it because we have already built path with it.
-	err = p.Iterate(nil).EachValue(nil, func(value quad.Value) {
-		nativeValue := quad.NativeOf(value) // this converts RDF values to normal Go types
-		//fmt.Println(nativeValue)
-		if nativeValue.(string) != helloWorld {
-			t.Errorf("NOT " + helloWorld)
+		store, err := cayley.NewGraph("ouch", dbName, graph.Options{})
+		if err != nil {
+			t.Error(err)
+			return
 		}
-	})
-	if err != nil {
-		t.Error(err)
-	}
 
-}
+		const helloWorld = "Hello World!"
+		err = store.AddQuad(quad.Make("phrase of the day", "is of course", helloWorld, nil))
+		if err != nil {
+			t.Error(err)
+			return
+		}
 
-// below from the memstore tests
+		// Now we create the path, to get to our data
+		p := cayley.StartPath(store, quad.String("phrase of the day")).Out(quad.String("is of course"))
 
-// This is a simple test graph.
-//
-//    +---+                        +---+
-//    | A |-------               ->| F |<--
-//    +---+       \------>+---+-/  +---+   \--+---+
-//                 ------>|#B#|      |        | E |
-//    +---+-------/      >+---+      |        +---+
-//    | C |             /            v
-//    +---+           -/           +---+
-//      ----    +---+/             |#G#|
-//          \-->|#D#|------------->+---+
-//              +---+
-//
-var simpleGraph = []quad.Quad{
-	quad.MakeRaw("A", "follows", "B", ""),
-	quad.MakeRaw("C", "follows", "B", ""),
-	quad.MakeRaw("C", "follows", "D", ""),
-	quad.MakeRaw("D", "follows", "B", ""),
-	quad.MakeRaw("B", "follows", "F", ""),
-	quad.MakeRaw("F", "follows", "G", ""),
-	quad.MakeRaw("D", "follows", "G", ""),
-	quad.MakeRaw("E", "follows", "F", ""),
-	quad.MakeRaw("B", "status", "cool", "status_graph"),
-	quad.MakeRaw("D", "status", "cool", "status_graph"),
-	quad.MakeRaw("G", "status", "cool", "status_graph"),
-}
-
-func makeTestStore(data []quad.Quad) (graph.QuadStore, graph.QuadWriter, []pair) {
-
-	dbName, err := testDB(false)
-	if err != nil {
-		panic(err)
-	}
-
-	seen := make(map[string]struct{})
-	qs, err := graph.NewQuadStore("ouch", dbName, graph.Options{})
-	if err != nil {
-		panic(err)
-	}
-
-	var (
-		val int64
-		ind []pair
-	)
-	writer, _ := writer.NewSingleReplication(qs, nil)
-	for _, t := range data {
-		for _, dir := range quad.Directions {
-			qp := t.GetString(dir)
-			if _, ok := seen[qp]; !ok && qp != "" {
-				val++
-				ind = append(ind, pair{qp, val})
-				seen[qp] = struct{}{}
+		// Now we iterate over results. Arguments:
+		// 1. Optional context used for cancellation.
+		// 2. Flag to optimize query before execution.
+		// 3. Quad store, but we can omit it because we have already built path with it.
+		err = p.Iterate(nil).EachValue(nil, func(value quad.Value) {
+			// fmt.Printf("HW %T %v\n", value, value)
+			if value != quad.String(helloWorld) {
+				t.Errorf("NOT " + helloWorld)
 			}
+		})
+		if err != nil {
+			t.Error(err)
 		}
-
-		writer.AddQuad(t)
-		val++
 	}
-	return qs, writer, ind
-}
-
-type pair struct {
-	query string
-	value int64
-}
-
-func TestSimpleGraph(t *testing.T) {
-	qs, _, _ := makeTestStore(simpleGraph)
-
-	require.Equal(t, int64(11), qs.Size()) // 22 in original memstore
-
-	// TODO more tests here ?
 }
 
 // ALL TESTS...
 
-func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
-	dbName, err := testDB(true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	qs, err := dialDB(true, dbName, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return qs, nil, func() {
-		qs.Close()
-	}
-}
-
 func TestOuchAll(t *testing.T) {
-	nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
-		TimeInMs: true,
-	})
+
+	if runtime.GOARCH == "js" {
+		t.Skip("JS/PouchDB not yet ready for primetime")
+	}
+
+	// trace = true
+	// defer func() { trace = false }()
+
+	dbNames, err := testDB(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dbName := range dbNames {
+		t.Log("Testing against:", dbName)
+		makeOuch := func(t testing.TB) (nosql.Database, graph.Options, func()) {
+			deleteAllOuchDocs(dbName, true)
+			qs, err := dialDB(true, dbName, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return qs, nil, func() {
+				qs.Close()
+			}
+		}
+		nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
+			TimeInMs: true,
+		})
+	}
 }

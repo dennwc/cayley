@@ -13,7 +13,7 @@ import (
 const (
 	int64Adjust  = 1 << 63
 	keySeparator = "|"
-	timeFormat   = time.RFC3339
+	timeFormat   = time.RFC3339Nano // seconds resolution only without Nano
 )
 
 // itos serializes int64 into a sortable string 13 chars long.
@@ -40,6 +40,8 @@ func toInterfaceValue(k string, v nosql.Value) interface{} {
 	case nil:
 		return nil
 	case nosql.Document:
+		//fmt.Println("toInterfaceValue Doc", v)
+		// see nodeValue in ../quadstore.go
 		return toInterfaceDoc(v)
 	case nosql.Array: // TODO this encoding of array may be problematic, as we've lost the type info
 		arr := make([]interface{}, 0, len(v))
@@ -53,15 +55,17 @@ func toInterfaceValue(k string, v nosql.Value) interface{} {
 		if k[0] == '_' {
 			return string(v)
 		}
-		return "S" + string(v)
+		return "S" + string(v) // need leading "S"
 	case nosql.Int: // special handling here, as type can't be inferred from json
 		return "I" + itos(int64(v))
 	case nosql.Float:
-		return v
+		return float64(v)
 	case nosql.Bool:
-		return v
+		return bool(v)
 	case nosql.Time: // special handling here, as type can't be inferred from json
-		return "T" + time.Time(v).Format(timeFormat)
+		ret := "T" + time.Time(v).Format(timeFormat)
+		//fmt.Println("DEBUG " + ret)
+		return ret
 	case nosql.Bytes: // special handling here, as type can't be inferred from json
 		return "B" + base64.StdEncoding.EncodeToString(v)
 	default:
@@ -77,6 +81,13 @@ func toInterfaceDoc(d nosql.Document) map[string]interface{} {
 	for k, v := range d {
 		m[k] = toInterfaceValue(k, v)
 	}
+
+	// roundtriptest TODO remove!
+	b := fromInterfaceDoc(m)
+	if err := dcompare(d, b); err != nil {
+		fmt.Printf("DEBUG round-trip failed error: %v\nout: %#v\nback: %#v\n", err, d, b)
+	}
+
 	return m
 }
 
@@ -85,6 +96,8 @@ func fromInterfaceValue(k string, v interface{}) nosql.Value {
 	case nil:
 		return nil
 	case map[string]interface{}:
+		//fmt.Println("fromInterfaceValue Doc", v)
+		// see nodeValue in ../quadstore.go
 		return fromInterfaceDoc(v)
 	case []interface{}:
 		arr := make(nosql.Array, 0, len(v))
@@ -96,7 +109,7 @@ func fromInterfaceValue(k string, v interface{}) nosql.Value {
 		if len(v) == 0 {
 			return nosql.String("")
 		}
-		if k[0] == '_' {
+		if k[0] == '_' && k != idField {
 			return nosql.String(v)
 		}
 		typ := v[0]
@@ -106,8 +119,9 @@ func fromInterfaceValue(k string, v interface{}) nosql.Value {
 			return nosql.String(v)
 
 		case 'K':
-			key := make(nosql.Key, 0, len(v))
-			for _, part := range strings.Split(v, keySeparator) {
+			parts := strings.Split(v, keySeparator)
+			key := make(nosql.Key, 0, len(parts))
+			for _, part := range parts {
 				key = append(key, part)
 			}
 			return key
@@ -121,10 +135,12 @@ func fromInterfaceValue(k string, v interface{}) nosql.Value {
 			return nosql.Bytes(byts)
 
 		case 'T':
+			var time0 nosql.Time
 			tim, err := time.Parse(timeFormat, v)
 			if err != nil {
 				// TODO consider how to handle this error properly
-				return nosql.Time(tim)
+				fmt.Println("DEBUG Time parse", tim, err)
+				return time0
 			}
 			return nosql.Time(tim)
 
