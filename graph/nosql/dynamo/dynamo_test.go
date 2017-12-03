@@ -72,5 +72,7 @@ func makeDynamo(t testing.TB) (nosql.Database, graph.Options, func()) {
 }
 
 func TestDynamo(t *testing.T) {
-	nosqltest.TestAll(t, makeDynamo, nil)
+	nosqltest.TestAll(t, makeDynamo, &nosqltest.Config{
+		FloatToInt: true,
+	})
 }

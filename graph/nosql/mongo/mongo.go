@@ -138,12 +138,8 @@ func toBsonValue(v nosql.Value) interface{} {
 		return nil
 	case nosql.Document:
 		return toBsonDoc(v)
-	case nosql.Array:
-		arr := make([]interface{}, 0, len(v))
-		for _, s := range v {
-			arr = append(arr, toBsonValue(s))
-		}
-		return arr
+	case nosql.Strings:
+		return []string(v)
 	case nosql.String:
 		return string(v)
 	case nosql.Int:
@@ -167,9 +163,14 @@ func fromBsonValue(v interface{}) nosql.Value {
 	case bson.M:
 		return fromBsonDoc(v)
 	case []interface{}:
-		arr := make(nosql.Array, 0, len(v))
+		arr := make(nosql.Strings, 0, len(v))
 		for _, s := range v {
-			arr = append(arr, fromBsonValue(s))
+			sv := fromBsonValue(s)
+			str, ok := sv.(nosql.String)
+			if !ok {
+				panic(fmt.Errorf("unsupported value in array: %T", sv))
+			}
+			arr = append(arr, string(str))
 		}
 		return arr
 	case bson.ObjectId:
@@ -239,9 +240,9 @@ func (c *collection) convDoc(m bson.M) nosql.Document {
 		delete(m, idField)
 	} else {
 		// key field renamed - set correct name
-		if v := m[idField]; v != nil {
+		if v, ok := m[idField].(string); ok {
 			delete(m, idField)
-			m[c.primary.Fields[0]] = v
+			m[c.primary.Fields[0]] = string(v)
 		}
 	}
 	return fromBsonDoc(m)
@@ -251,7 +252,10 @@ func objidString(id bson.ObjectId) string {
 	return hex.EncodeToString([]byte(id))
 }
 
-func compKey(key []string) string {
+func compKey(key nosql.Key) string {
+	if len(key) == 1 {
+		return key[0]
+	}
 	return strings.Join(key, "")
 }
 
@@ -259,17 +263,25 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 	m := toBsonDoc(d)
 	var mid interface{}
 	if key == nil {
-		oid := bson.NewObjectId()
+		// TODO: maybe allow to pass custom key types as nosql.Key
+		oid := objidString(bson.NewObjectId())
 		mid = oid
-		key = nosql.Key{objidString(oid)}
+		key = nosql.Key{oid}
 	} else {
-		mid = compKey([]string(key))
+		mid = compKey(key)
 	}
-	c := db.colls[col]
+	c, ok := db.colls[col]
+	if !ok {
+		return nil, fmt.Errorf("collection %q not found", col)
+	}
 	m[idField] = mid
 	if !c.compPK {
 		// delete source field, since we already added it as _id
 		delete(m, c.primary.Fields[0])
+	} else {
+		for i, f := range c.primary.Fields {
+			m[f] = string(key[i])
+		}
 	}
 	if err := c.c.Insert(m); err != nil {
 		return nil, err
@@ -279,7 +291,7 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 	c := db.colls[col]
 	var m bson.M
-	err := c.c.FindId(compKey([]string(key))).One(&m)
+	err := c.c.FindId(compKey(key)).One(&m)
 	if err == mgo.ErrNotFound {
 		return nil, nosql.ErrNotFound
 	} else if err != nil {
@@ -293,11 +305,11 @@ func (db *DB) Query(col string) nosql.Query {
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	c := db.colls[col]
-	return &Update{col: &c, key: key, update: make(bson.M)}
+	return &Update{col: c, key: key, update: make(bson.M)}
 }
 func (db *DB) Delete(col string) nosql.Delete {
 	c := db.colls[col]
-	return &Delete{col: &c}
+	return &Delete{col: c}
 }
 
 func buildFilters(filters []nosql.FieldFilter) bson.M {
@@ -405,7 +417,7 @@ func (it *Iterator) Doc() nosql.Document {
 }
 
 type Delete struct {
-	col   *mgo.Collection
+	col   collection
 	query bson.M
 }
 
@@ -426,6 +438,10 @@ func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
 	if len(keys) == 1 {
 		m[idField] = compKey(keys[0])
 	} else {
+		ids := make([]string, 0, len(keys))
+		for _, k := range keys {
+			ids = append(ids, compKey(k))
+		}
 		m[idField] = bson.M{"$in": ids}
 	}
 	if d.query == nil {
@@ -440,12 +456,12 @@ func (d *Delete) Do(ctx context.Context) error {
 	if d.query != nil {
 		qu = d.query
 	}
-	_, err := d.col.RemoveAll(qu)
+	_, err := d.col.c.RemoveAll(qu)
 	return err
 }
 
 type Update struct {
-	col    *mgo.Collection
+	col    collection
 	key    nosql.Key
 	upsert bson.M
 	update bson.M
@@ -482,9 +498,9 @@ func (u *Update) Do(ctx context.Context) error {
 		if len(u.upsert) != 0 {
 			u.update["$setOnInsert"] = u.upsert
 		}
-		_, err = u.col.UpsertId(u.key, u.update)
+		_, err = u.col.c.UpsertId(u.key, u.update)
 	} else {
-		err = u.col.UpdateId(u.key, u.update)
+		err = u.col.c.UpdateId(u.key, u.update)
 	}
 	return err
 }

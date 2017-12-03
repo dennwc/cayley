@@ -18,7 +18,8 @@ import (
 type DatabaseFunc func(t testing.TB) (nosql.Database, graph.Options, func())
 
 type Config struct {
-	TimeInMs bool
+	FloatToInt bool // database silently converts all float values to ints, if possible
+	TimeInMs   bool
 }
 
 func (c Config) quadStore() *graphtest.Config {
@@ -57,6 +58,9 @@ func TestAll(t *testing.T, gen DatabaseFunc, conf *Config) {
 	if conf == nil {
 		conf = &Config{}
 	}
+	t.Run("nosql", func(t *testing.T) {
+		TestNoSQL(t, gen, conf)
+	})
 	t.Run("qs", func(t *testing.T) {
 		if parallel {
 			t.Parallel()
