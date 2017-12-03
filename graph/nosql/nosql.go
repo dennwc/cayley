@@ -21,6 +21,16 @@ func GenKey() Key {
 	return Key{uuid.NewUUID().String()}
 }
 
+func KeyFrom(fields []string, doc Document) Key {
+	key := make(Key, 0, len(fields))
+	for _, f := range fields {
+		if s, ok := doc[f].(String); ok {
+			key = append(key, string(s))
+		}
+	}
+	return key
+}
+
 type Database interface {
 	Insert(col string, key Key, d Document) (Key, error)
 	FindByKey(col string, key Key) (Document, error)
