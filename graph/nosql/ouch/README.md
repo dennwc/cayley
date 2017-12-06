@@ -14,7 +14,7 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 
 ## TODO
 
-* fix bugs reported by TestAll - only 1 remaining for JS target as at 6-dec-17
+* Report GopherJS bug type conversion in graph/graphtest/graphtest.go:IteratedQuads()
 * add Query.Limit() test
 * work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB
 * add indexing

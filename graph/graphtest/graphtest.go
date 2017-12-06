@@ -138,6 +138,9 @@ func IteratedQuads(t testing.TB, qs graph.QuadStore, it graph.Iterator) []quad.Q
 	}
 	require.Nil(t, it.Err())
 	sort.Sort(res)
+	if res == nil {
+		return []quad.Quad(nil) // GopherJS seems to have a bug with this type conversion for a nil value
+	}
 	return res
 }
 
