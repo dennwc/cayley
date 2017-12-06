@@ -14,10 +14,9 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 
 ## TODO
 
-* fix bugs reported by TestAll
-* fix "KK" bug in Delete.Keys()
+* fix bugs reported by TestAll - only 1 remaining for JS target as at 6-dec-17
+* add Query.Limit() test
 * work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB
 * add indexing
-* optimize ID field to be simple string
-* only pull back the _id & _ref fields in the delete query
+* optimize: only pull back the _id & _ref fields in the delete query
 	

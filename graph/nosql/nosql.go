@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/pborman/uuid"
 )
 
 var (
@@ -12,7 +14,23 @@ var (
 
 type Key []string
 
-func (Key) isValue() {}
+func (k Key) Value() Value {
+	return Strings(k)
+}
+
+func GenKey() Key {
+	return Key{uuid.NewUUID().String()}
+}
+
+func KeyFrom(fields []string, doc Document) Key {
+	key := make(Key, 0, len(fields))
+	for _, f := range fields {
+		if s, ok := doc[f].(String); ok {
+			key = append(key, string(s))
+		}
+	}
+	return key
+}
 
 type Database interface {
 	Insert(col string, key Key, d Document) (Key, error)
@@ -79,10 +97,10 @@ type IndexType int
 const (
 	IndexAny = IndexType(iota)
 	StringExact
-	StringFulltext
-	IntIndex
-	FloatIndex
-	TimeIndex
+	//StringFulltext
+	//IntIndex
+	//FloatIndex
+	//TimeIndex
 )
 
 type Index struct {
@@ -122,6 +140,6 @@ type Bytes []byte
 
 func (Bytes) isValue() {}
 
-type Array []Value
+type Strings []string
 
-func (Array) isValue() {}
+func (Strings) isValue() {}

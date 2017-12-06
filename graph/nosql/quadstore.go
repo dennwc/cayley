@@ -264,7 +264,7 @@ func checkQuadValid(q Document) bool {
 	return added > deleted
 }
 
-func (qs *QuadStore) checkValidQuad(key []string) bool {
+func (qs *QuadStore) checkValidQuad(key Key) bool {
 	q, err := qs.db.FindByKey(colQuads, key)
 	if err == ErrNotFound {
 		return false
@@ -286,7 +286,7 @@ func (qs *QuadStore) updateLog(d *graph.Delta) (Key, error) {
 	_ = logEntry{}
 	return qs.db.Insert(colLog, nil, Document{
 		"Action": String(action),
-		"Key":    qs.getIDForQuad(d.Quad),
+		"Key":    qs.getIDForQuad(d.Quad).Value(),
 	})
 }
 

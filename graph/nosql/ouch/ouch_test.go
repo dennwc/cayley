@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"runtime"
 	"sort"
 	"testing"
@@ -17,12 +18,13 @@ import (
 	"github.com/flimzy/kivik"
 )
 
+const remote = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"
+
 func testDB(DBshouldNotExist bool) ([]string, error) {
 	var ret []string
-	const remote = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"
 	switch defaultDriverName {
 	case "pouch":
-		ret = []string{"pouchdb.test", remote} // test both local and remote db access
+		ret = []string{"pouchdb.test" /*, remote*/} // TODO test both local and remote db access
 	case "couch":
 		ret = []string{remote}
 	default:
@@ -38,11 +40,15 @@ func testDB(DBshouldNotExist bool) ([]string, error) {
 
 func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 	if DBshouldNotExist {
-		client, err := kivik.New(context.TODO(), defaultDriverName, testDBname)
-		if err != nil {
-			return err
+		if runtime.GOARCH == "js" && testDBname != remote {
+			return os.RemoveAll(testDBname)
+		} else {
+			client, err := kivik.New(context.TODO(), defaultDriverName, testDBname)
+			if err != nil {
+				return err
+			}
+			return client.DestroyDB(context.TODO(), testDBname)
 		}
-		return client.DestroyDB(context.TODO(), testDBname)
 	}
 
 	db, err := Open(testDBname, graph.Options{})
@@ -61,10 +67,28 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 
 	for rows.Next() {
 		//fmt.Println("deleteAllOuchDocs", rows.ID())
-		err = db.Delete("").Keys(nosql.Key{rows.ID()}).Do(context.TODO())
+		doc := map[string]interface{}{}
+		err = rows.ScanDoc(&doc)
 		if err != nil {
 			return err
 		}
+		_, err = db.(*DB).db.Delete(context.TODO(), doc[idField].(string), doc[revField].(string))
+		if err != nil {
+			return err
+		}
+	}
+	err = db.(*DB).db.Compact(context.TODO())
+	if err != nil {
+		return err
+	}
+	running := false
+	for running {
+		time.Sleep(time.Second)
+		stats, err := db.(*DB).db.Stats(context.TODO())
+		if err != nil {
+			return err
+		}
+		running = stats.CompactRunning
 	}
 	return nil
 }
@@ -72,10 +96,12 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 var allsorts = nosql.Document{
 	"Vnil": nil,
 	"VDocument": nosql.Document{
-		"Velement": nosql.String("test"),
+		"val":   nosql.String("test"),
+		"iri":   nosql.Bool(false),
+		"bnode": nosql.Bool(false),
 	},
-	"VArray":  nosql.Array{nosql.String("A"), nosql.String("B"), nosql.String("C")},
-	"VKey":    nosql.Key{"1", "2", "3"},
+	//	"VArray":  nosql.Array{nosql.String("A"), nosql.String("B"), nosql.String("C")},
+	"VKey":    nosql.Key{"1", "2", "3"}.Value(),
 	"VString": nosql.String("TEST"),
 	"VInt":    nosql.Int(42),
 	"VFloat":  nosql.Float(42.42),
@@ -97,7 +123,9 @@ func TestInsertDelete(t *testing.T) {
 
 	for _, dbName := range dbNames {
 
-		//fmt.Println("DEBUG dbName:", dbName)
+		if runtime.GOARCH == "js" {
+			t.Log("Testing " + dbName)
+		}
 
 		dbc, err := Open(dbName, graph.Options{})
 		if err != nil {
@@ -109,7 +137,7 @@ func TestInsertDelete(t *testing.T) {
 		if err != nil {
 			t.Error("insert error", err)
 		}
-		if err := dbc.(*DB).dcheck(key, allsorts); err != nil {
+		if err := dbc.(*DB).dcheck("test", key, allsorts); err != nil {
 			t.Error(err)
 		}
 		if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
@@ -157,6 +185,10 @@ func TestHelloWorld(t *testing.T) {
 
 	for _, dbName := range dbNames {
 
+		if runtime.GOARCH == "js" {
+			t.Log("Testing " + dbName)
+		}
+
 		store, err := cayley.NewGraph("ouch", dbName, graph.Options{})
 		if err != nil {
 			t.Error(err)
@@ -191,13 +223,11 @@ func TestHelloWorld(t *testing.T) {
 
 // ALL TESTS...
 
+var dbId int
+
 func TestOuchAll(t *testing.T) {
 
-	if runtime.GOARCH == "js" {
-		t.Skip("JS/PouchDB not yet ready for primetime")
-	}
-
-	// trace = true
+	// trace = false
 	// defer func() { trace = false }()
 
 	dbNames, err := testDB(true)
@@ -205,8 +235,13 @@ func TestOuchAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, dbName := range dbNames {
-		t.Log("Testing against:", dbName)
 		makeOuch := func(t testing.TB) (nosql.Database, graph.Options, func()) {
+
+			if dbName != remote && runtime.GOARCH == "js" {
+				dbName = fmt.Sprintf("pouchdb%d.test", dbId)
+				dbId++
+			}
+
 			deleteAllOuchDocs(dbName, true)
 			qs, err := dialDB(true, dbName, nil)
 			if err != nil {
@@ -217,7 +252,8 @@ func TestOuchAll(t *testing.T) {
 			}
 		}
 		nosqltest.TestAll(t, makeOuch, &nosqltest.Config{
-			TimeInMs: true,
+			TimeInMs:   false,
+			FloatToInt: false,
 		})
 	}
 }

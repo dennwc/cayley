@@ -10,7 +10,6 @@ import (
 
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/nosql"
-	"github.com/pborman/uuid"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -220,7 +219,7 @@ func toAwsValue(v nosql.Value) *dynamodb.AttributeValue {
 	switch v := v.(type) {
 	case nil:
 		return &dynamodb.AttributeValue{NULL: aws.Bool(true)}
-	case nosql.Key:
+	case nosql.Strings:
 		ss := make([]*string, 0, len(v))
 		for _, k := range v {
 			ss = append(ss, aws.String(k))
@@ -233,12 +232,6 @@ func toAwsValue(v nosql.Value) *dynamodb.AttributeValue {
 			panic(fmt.Errorf("document collides with internal types: %v", v))
 		}
 		return &dynamodb.AttributeValue{M: toAwsDoc(v)}
-	case nosql.Array:
-		arr := make([]*dynamodb.AttributeValue, 0, len(v))
-		for _, s := range v {
-			arr = append(arr, toAwsValue(s))
-		}
-		return &dynamodb.AttributeValue{L: arr}
 	case nosql.String:
 		return str(string(v))
 	case nosql.Int:
@@ -266,8 +259,8 @@ func fromAwsValue(v *dynamodb.AttributeValue) nosql.Value {
 	switch {
 	case v.NULL != nil && *v.NULL:
 		return nil
-	case v.SS != nil: // pk
-		key := make(nosql.Key, 0, len(v.SS))
+	case v.SS != nil:
+		key := make(nosql.Strings, 0, len(v.SS))
 		for _, s := range v.SS {
 			key = append(key, *s)
 		}
@@ -288,12 +281,6 @@ func fromAwsValue(v *dynamodb.AttributeValue) nosql.Value {
 			}
 		}
 		return fromAwsDoc(v.M)
-	case v.L != nil:
-		arr := make(nosql.Array, 0, len(v.L))
-		for _, s := range v.L {
-			arr = append(arr, fromAwsValue(s))
-		}
-		return arr
 	case v.S != nil:
 		return nosql.String(*v.S)
 	case v.N != nil:
@@ -331,15 +318,14 @@ func fromAwsDoc(d map[string]*dynamodb.AttributeValue) nosql.Document {
 	return m
 }
 
-func genKey() nosql.Key {
-	return nosql.Key{uuid.NewUUID().String()}
-}
-
 func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
 	if key == nil {
-		key = genKey()
+		key = nosql.GenKey()
 	}
 	tbl := db.tables[col]
+	if len(key) != len(tbl.primary.Fields) {
+		return nil, fmt.Errorf("unexpected key length: got %d, exp: %d", len(key), len(tbl.primary.Fields))
+	}
 	item := toAwsDoc(d)
 	for i, f := range tbl.primary.Fields {
 		item[f] = str(key[i])
@@ -376,7 +362,7 @@ func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
 	} else if len(resp.Item) == 0 {
 		return nil, nosql.ErrNotFound
 	}
-	return fromAwsDoc(resp.Item), nil
+	return tbl.convDoc(resp.Item), nil
 }
 func (db *DB) Query(col string) nosql.Query {
 	tbl := db.tables[col]
