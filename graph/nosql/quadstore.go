@@ -177,15 +177,12 @@ func ensureIndexes(db Database) error {
 }
 
 func (qs *QuadStore) getIDForQuad(t quad.Quad) Key {
-	key := Key{
+	return Key{
 		hashOf(t.Subject),
 		hashOf(t.Predicate),
 		hashOf(t.Object),
+		hashOf(t.Label),
 	}
-	if h := hashOf(t.Label); h != "" {
-		key = append(key, h)
-	}
-	return key
 }
 
 func hashOf(s quad.Value) string {

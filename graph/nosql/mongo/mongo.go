@@ -234,6 +234,17 @@ func (c *collection) getKey(m bson.M) nosql.Key {
 	return key
 }
 
+func (c *collection) setKey(m bson.M, key nosql.Key) {
+	if !c.compPK {
+		// delete source field, since we already added it as _id
+		delete(m, c.primary.Fields[0])
+	} else {
+		for i, f := range c.primary.Fields {
+			m[f] = string(key[i])
+		}
+	}
+}
+
 func (c *collection) convDoc(m bson.M) nosql.Document {
 	if c.compPK {
 		// key field computed from multiple source fields - remove it
@@ -261,7 +272,7 @@ func compKey(key nosql.Key) string {
 
 func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
 	m := toBsonDoc(d)
-	var mid interface{}
+	var mid string
 	if key == nil {
 		// TODO: maybe allow to pass custom key types as nosql.Key
 		oid := objidString(bson.NewObjectId())
@@ -275,14 +286,7 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 		return nil, fmt.Errorf("collection %q not found", col)
 	}
 	m[idField] = mid
-	if !c.compPK {
-		// delete source field, since we already added it as _id
-		delete(m, c.primary.Fields[0])
-	} else {
-		for i, f := range c.primary.Fields {
-			m[f] = string(key[i])
-		}
-	}
+	c.setKey(m, key)
 	if err := c.c.Insert(m); err != nil {
 		return nil, err
 	}
@@ -305,11 +309,11 @@ func (db *DB) Query(col string) nosql.Query {
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	c := db.colls[col]
-	return &Update{col: c, key: key, update: make(bson.M)}
+	return &Update{col: &c, key: key, update: make(bson.M)}
 }
 func (db *DB) Delete(col string) nosql.Delete {
 	c := db.colls[col]
-	return &Delete{col: c}
+	return &Delete{col: &c}
 }
 
 func buildFilters(filters []nosql.FieldFilter) bson.M {
@@ -417,7 +421,7 @@ func (it *Iterator) Doc() nosql.Document {
 }
 
 type Delete struct {
-	col   collection
+	col   *collection
 	query bson.M
 }
 
@@ -461,7 +465,7 @@ func (d *Delete) Do(ctx context.Context) error {
 }
 
 type Update struct {
-	col    collection
+	col    *collection
 	key    nosql.Key
 	upsert bson.M
 	update bson.M
@@ -490,17 +494,19 @@ func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	if u.upsert == nil {
 		u.upsert = make(bson.M)
 	}
+	u.col.setKey(u.upsert, u.key)
 	return u
 }
 func (u *Update) Do(ctx context.Context) error {
+	key := compKey(u.key)
 	var err error
 	if u.upsert != nil {
 		if len(u.upsert) != 0 {
 			u.update["$setOnInsert"] = u.upsert
 		}
-		_, err = u.col.c.UpsertId(u.key, u.update)
+		_, err = u.col.c.UpsertId(key, u.update)
 	} else {
-		err = u.col.c.UpdateId(u.key, u.update)
+		err = u.col.c.UpdateId(key, u.update)
 	}
 	return err
 }

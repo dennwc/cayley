@@ -23,6 +23,10 @@ func (kt keyType) SetKey(d nosql.Document, k nosql.Key) {
 	}
 }
 
+const (
+	colName = "test"
+)
+
 var (
 	mu      sync.Mutex
 	lastKey int
@@ -76,6 +80,7 @@ var testsNoSQLKey = []struct {
 }{
 	{name: "insert", t: testInsert},
 	{name: "delete by key", t: testDeleteByKey},
+	{name: "update", t: testUpdate},
 }
 
 func TestNoSQL(t *testing.T, gen DatabaseFunc, conf *Config) {
@@ -184,17 +189,18 @@ func iterateExpect(t testing.TB, kt keyType, it nosql.DocIterator, exp []nosql.D
 	require.Equal(t, expKeys, keys)
 }
 
-func testInsert(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
-	const (
-		col = "test"
-	)
-	err := db.EnsureIndex(col, nosql.Index{
+func ensurePK(t testing.TB, db nosql.Database, kt keyType) {
+	err := db.EnsureIndex(colName, nosql.Index{
 		Fields: kt.Fields,
 		Type:   nosql.StringExact,
 	}, nil)
 	require.NoError(t, err)
+}
 
-	_, err = db.FindByKey(col, kt.Gen())
+func testInsert(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
+	ensurePK(t, db, kt)
+
+	_, err := db.FindByKey(colName, kt.Gen())
 	require.Equal(t, nosql.ErrNotFound, err)
 
 	type insert struct {
@@ -226,7 +232,7 @@ func testInsert(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
 	}
 	for i := range ins {
 		in := &ins[i]
-		k, err := db.Insert(col, in.Key, in.Doc)
+		k, err := db.Insert(colName, in.Key, in.Doc)
 		require.NoError(t, err)
 		if in.Key == nil {
 			require.NotNil(t, k)
@@ -238,7 +244,7 @@ func testInsert(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
 
 	var docs []nosql.Document
 	for _, in := range ins {
-		doc, err := db.FindByKey(col, in.Key)
+		doc, err := db.FindByKey(colName, in.Key)
 		require.NoError(t, err, "find %#v", in.Key)
 		kt.SetKey(in.Doc, in.Key)
 		fixDoc(conf, in.Doc)
@@ -246,21 +252,14 @@ func testInsert(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
 		docs = append(docs, in.Doc)
 	}
 
-	_, err = db.FindByKey(col, kt.Gen())
+	_, err = db.FindByKey(colName, kt.Gen())
 	require.Equal(t, nosql.ErrNotFound, err)
 
-	iterateExpect(t, kt, db.Query(col).Iterate(), docs)
+	iterateExpect(t, kt, db.Query(colName).Iterate(), docs)
 }
 
 func testDeleteByKey(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
-	const (
-		col = "test"
-	)
-	err := db.EnsureIndex(col, nosql.Index{
-		Fields: kt.Fields,
-		Type:   nosql.StringExact,
-	}, nil)
-	require.NoError(t, err)
+	ensurePK(t, db, kt)
 
 	var (
 		keys []nosql.Key
@@ -275,9 +274,9 @@ func testDeleteByKey(t *testing.T, db nosql.Database, conf *Config, kt keyType) 
 			"data": nosql.Int(i),
 		}
 		if len(kt.Fields) == 1 && i%2 == 1 {
-			key, err = db.Insert(col, nil, doc)
+			key, err = db.Insert(colName, nil, doc)
 		} else {
-			key, err = db.Insert(col, kt.Gen(), doc)
+			key, err = db.Insert(colName, kt.Gen(), doc)
 		}
 		require.NoError(t, err)
 		keys = append(keys, key)
@@ -287,17 +286,109 @@ func testDeleteByKey(t *testing.T, db nosql.Database, conf *Config, kt keyType) 
 		docs = append(docs, doc)
 	}
 
-	iterateExpect(t, kt, db.Query(col).Iterate(), docs)
+	iterateExpect(t, kt, db.Query(colName).Iterate(), docs)
 
 	del := keys[:5]
 	keys = keys[len(del):]
 	docs = docs[len(del):]
 
-	err = db.Delete(col).Keys(del[0]).Do(context.TODO())
+	err := db.Delete(colName).Keys(del[0]).Do(context.TODO())
 	require.NoError(t, err)
 
-	err = db.Delete(col).Keys(del[1:]...).Do(context.TODO())
+	err = db.Delete(colName).Keys(del[1:]...).Do(context.TODO())
 	require.NoError(t, err)
 
-	iterateExpect(t, kt, db.Query(col).Iterate(), docs)
+	iterateExpect(t, kt, db.Query(colName).Iterate(), docs)
+}
+
+func testUpdate(t *testing.T, db nosql.Database, conf *Config, kt keyType) {
+	ensurePK(t, db, kt)
+
+	ctx := context.TODO()
+
+	docs := []nosql.Document{
+		{
+			"a": nosql.String("A"),
+			"n": nosql.Int(1),
+		},
+		{
+			"a": nosql.String("B"),
+			"n": nosql.Int(2),
+		},
+	}
+	var keys []nosql.Key
+	for range docs {
+		keys = append(keys, kt.Gen())
+	}
+
+	// test update on both upserted and inserted nodes
+	err := db.Update(colName, keys[0]).Upsert(docs[0]).Do(ctx)
+	require.NoError(t, err)
+
+	_, err = db.Insert(colName, keys[1], docs[1])
+	require.NoError(t, err)
+
+	for _, k := range keys {
+		err = db.Update(colName, k).Inc("n", +2).Do(ctx)
+		require.NoError(t, err)
+	}
+
+	exp := []nosql.Document{
+		{
+			"a": nosql.String("A"),
+			"n": nosql.Int(3),
+		},
+		{
+			"a": nosql.String("B"),
+			"n": nosql.Int(4),
+		},
+	}
+	for i, k := range keys {
+		kt.SetKey(exp[i], k)
+	}
+	iterateExpect(t, kt, db.Query(colName).Iterate(), exp)
+
+	// remove one document, so next upsert will create document
+	err = db.Delete(colName).Keys(keys[0]).Do(ctx)
+	require.NoError(t, err)
+
+	// get a clean copy of data
+	docs = []nosql.Document{
+		{
+			"a": nosql.String("C"),
+		},
+		{
+			"a": nosql.String("B"),
+			// can't specify "n" here
+		},
+		{
+			"a": nosql.String("D"),
+			// field should appear after upsert
+		},
+	}
+	keys = append(keys, kt.Gen())
+
+	for i, k := range keys {
+		err = db.Update(colName, k).Upsert(docs[i]).Inc("n", -1).Do(ctx)
+		require.NoError(t, err)
+	}
+
+	exp = []nosql.Document{
+		{
+			"a": nosql.String("C"),
+			"n": nosql.Int(-1),
+		},
+		{
+			"a": nosql.String("B"),
+			"n": nosql.Int(3),
+		},
+		{
+			"a": nosql.String("D"),
+			"n": nosql.Int(-1),
+		},
+	}
+	for i, k := range keys {
+		kt.SetKey(exp[i], k)
+	}
+	iterateExpect(t, kt, db.Query(colName).Iterate(), exp)
 }

@@ -718,11 +718,26 @@ func (u *Update) Do(ctx context.Context) error {
 		req.ExpressionAttributeValues = u.vals
 	}
 	if !u.upsert {
-		cond := make([]string, 0, len(u.tbl.primary.Fields))
-		for _, f := range u.tbl.primary.Fields {
-			cond = append(cond, "attribute_not_exists("+f+")")
+		cond := make([]string, 0, 2)
+
+		for i, f := range u.tbl.primary.Fields {
+			name := fmt.Sprintf("pk%d", i)
+			cond = append(cond, "attribute_exists(#"+name+")")
+			if i == 1 && u.tbl.compRange {
+				req.ExpressionAttributeNames["#"+name] = aws.String(fldRange)
+				break
+			}
+			req.ExpressionAttributeNames["#"+name] = aws.String(f)
 		}
 		req.ConditionExpression = aws.String(strings.Join(cond, " AND "))
+	}
+	if u.tbl.compRange {
+		for i, f := range u.tbl.primary.Fields[1:] {
+			kl := fmt.Sprintf("rk%d", i)
+			u.names["#"+kl] = aws.String(f)
+			u.vals[":"+kl] = str(u.key[i+1])
+			u.set = append(u.set, "#"+kl+" = :"+kl)
+		}
 	}
 	upd := ""
 	if len(u.add) != 0 {
