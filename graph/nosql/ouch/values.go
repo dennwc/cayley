@@ -212,21 +212,19 @@ func fromOuchDoc(d map[string]interface{}) nosql.Document {
 		case "", idField, revField, collectionField:
 			continue // don't pass these fields back to nosql
 		}
-		if len(k) > 0 { // don't put back empty keys
-			if k[0] != ' ' { // ignore any other ouch driver internal keys
-				if path := strings.Split(k, keySeparator); len(path) > 1 {
-					if len(path) != 2 {
-						fmt.Println("DEBUG nosql.Document nesting too deep")
-						panic("nosql.Document nesting too deep")
-					}
-					// we have a sub-document
-					if _, found := m[path[0]]; !found {
-						m[path[0]] = make(nosql.Document)
-					}
-					m[path[0]].(nosql.Document)[path[1]] = fromOuchValue(k, v)
-				} else {
-					m[k] = fromOuchValue(k, v)
+		if k[0] != ' ' { // ignore any other ouch driver internal keys
+			if path := strings.Split(k, keySeparator); len(path) > 1 {
+				if len(path) != 2 {
+					fmt.Println("DEBUG nosql.Document nesting too deep")
+					panic("nosql.Document nesting too deep")
 				}
+				// we have a sub-document
+				if _, found := m[path[0]]; !found {
+					m[path[0]] = make(nosql.Document)
+				}
+				m[path[0]].(nosql.Document)[path[1]] = fromOuchValue(k, v)
+			} else {
+				m[k] = fromOuchValue(k, v)
 			}
 		}
 	}
