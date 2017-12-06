@@ -65,7 +65,7 @@ func toOuchDoc(col, id, rev string, d nosql.Document) map[string]interface{} {
 	if d == nil {
 		return nil
 	}
-	m := map[string]interface{}{}
+	m := make(map[string]interface{})
 	if col != "" {
 		m[collectionField] = col
 	}
@@ -77,34 +77,35 @@ func toOuchDoc(col, id, rev string, d nosql.Document) map[string]interface{} {
 	}
 
 	for k, v := range d {
-		if len(k) > 0 {
-			if subDoc, found := v.(nosql.Document); found {
-				for subK, subV := range subDoc {
-					subPath := k + keySeparator + subK
-					m[subPath] = toOuchValue(subPath, subV)
-				}
-
-				if true {
-					// TODO - review: these fields from the nosql nodeValue type
-					// used by the test code compare_typed_values
-					// $ne comparitor does not work correctly for missing fields
-					for _, nodeValueField := range []string{"iri", "bnode"} {
-						subPath := k + keySeparator + nodeValueField
-						if _, exists := m[subPath]; !exists {
-							m[subPath] = false
-						}
-					}
-					// NOTE: these fields do not seem to be required to make the tests work, but may be required in the real world!
-					// for _, nodeValueField := range []string{"type", "lang", "val"} {
-					// 	subPath := k + keySeparator + nodeValueField
-					// 	if _, exists := m[subPath]; !exists {
-					// 		m[subPath] = ""
-					// 	}
-					// }
-				}
-			} else {
-				m[k] = toOuchValue(k, v)
+		if len(k) == 0 {
+			continue
+		}
+		if subDoc, found := v.(nosql.Document); found {
+			for subK, subV := range subDoc {
+				subPath := k + keySeparator + subK
+				m[subPath] = toOuchValue(subPath, subV)
 			}
+
+			if true {
+				// TODO - review: these fields from the nosql nodeValue type
+				// used by the test code compare_typed_values
+				// $ne comparitor does not work correctly for missing fields
+				for _, nodeValueField := range []string{"iri", "bnode"} {
+					subPath := k + keySeparator + nodeValueField
+					if _, exists := m[subPath]; !exists {
+						m[subPath] = false
+					}
+				}
+				// NOTE: these fields do not seem to be required to make the tests work, but may be required in the real world!
+				// for _, nodeValueField := range []string{"type", "lang", "val"} {
+				// 	subPath := k + keySeparator + nodeValueField
+				// 	if _, exists := m[subPath]; !exists {
+				// 		m[subPath] = ""
+				// 	}
+				// }
+			}
+		} else {
+			m[k] = toOuchValue(k, v)
 		}
 	}
 
@@ -208,24 +209,23 @@ func fromOuchDoc(d map[string]interface{}) nosql.Document {
 	m := make(nosql.Document, len(d))
 	for k, v := range d {
 		switch k {
-		case idField, revField, collectionField:
-			// don't pass these fields back to nosql
-		default:
-			if len(k) > 0 { // don't put back empty keys
-				if k[0] != ' ' { // ignore any other ouch driver internal keys
-					if path := strings.Split(k, keySeparator); len(path) > 1 {
-						if len(path) != 2 {
-							fmt.Println("DEBUG nosql.Document nesting too deep")
-							panic("nosql.Document nesting too deep")
-						}
-						// we have a sub-document
-						if _, found := m[path[0]]; !found {
-							m[path[0]] = make(nosql.Document)
-						}
-						m[path[0]].(nosql.Document)[path[1]] = fromOuchValue(k, v)
-					} else {
-						m[k] = fromOuchValue(k, v)
+		case "", idField, revField, collectionField:
+			continue // don't pass these fields back to nosql
+		}
+		if len(k) > 0 { // don't put back empty keys
+			if k[0] != ' ' { // ignore any other ouch driver internal keys
+				if path := strings.Split(k, keySeparator); len(path) > 1 {
+					if len(path) != 2 {
+						fmt.Println("DEBUG nosql.Document nesting too deep")
+						panic("nosql.Document nesting too deep")
 					}
+					// we have a sub-document
+					if _, found := m[path[0]]; !found {
+						m[path[0]] = make(nosql.Document)
+					}
+					m[path[0]].(nosql.Document)[path[1]] = fromOuchValue(k, v)
+				} else {
+					m[k] = fromOuchValue(k, v)
 				}
 			}
 		}

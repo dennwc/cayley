@@ -39,15 +39,16 @@ func testDB(DBshouldNotExist bool) ([]string, error) {
 }
 
 func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
+	ctx := context.TODO()
 	if DBshouldNotExist {
 		if runtime.GOARCH == "js" && testDBname != remote {
 			return os.RemoveAll(testDBname)
 		} else {
-			client, err := kivik.New(context.TODO(), defaultDriverName, testDBname)
+			client, err := kivik.New(ctx, defaultDriverName, testDBname)
 			if err != nil {
 				return err
 			}
-			return client.DestroyDB(context.TODO(), testDBname)
+			return client.DestroyDB(ctx, testDBname)
 		}
 	}
 
@@ -59,7 +60,7 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 	}
 	defer db.Close()
 
-	rows, err := db.(*DB).db.AllDocs(context.TODO())
+	rows, err := db.(*DB).db.AllDocs(ctx)
 	if err != nil {
 		return err
 	}
@@ -72,19 +73,19 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 		if err != nil {
 			return err
 		}
-		_, err = db.(*DB).db.Delete(context.TODO(), doc[idField].(string), doc[revField].(string))
+		_, err = db.(*DB).db.Delete(ctx, doc[idField].(string), doc[revField].(string))
 		if err != nil {
 			return err
 		}
 	}
-	err = db.(*DB).db.Compact(context.TODO())
+	err = db.(*DB).db.Compact(ctx)
 	if err != nil {
 		return err
 	}
 	running := false
 	for running {
 		time.Sleep(time.Second)
-		stats, err := db.(*DB).db.Stats(context.TODO())
+		stats, err := db.(*DB).db.Stats(ctx)
 		if err != nil {
 			return err
 		}
@@ -127,7 +128,7 @@ func TestInsertDelete(t *testing.T) {
 			t.Log("Testing " + dbName)
 		}
 
-		dbc, err := Open(dbName, graph.Options{})
+		dbc, err := Open(dbName, nil)
 		if err != nil {
 			t.Error("DB open error", defaultDriverName, dbName, err)
 			return

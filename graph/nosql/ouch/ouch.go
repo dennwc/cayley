@@ -243,7 +243,7 @@ func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 func (db *DB) Delete(col string) nosql.Delete {
 	dpanic("DB.Delete")
 
-	return &Delete{db: db, col: col, q: db.Query(col)}
+	return &Delete{db: db, col: col, q: db.Query(col).(*Query)}
 }
 
 type ouchQuery map[string]interface{}
@@ -298,7 +298,7 @@ func (q *Query) buildFilters() nosql.Query {
 			case nosql.LTE:
 				test = "$lte"
 			default:
-				msg := "unknown nosqlFilter " + fmt.Sprintf("%v", filter.Filter)
+				msg := fmt.Sprintf("unknown nosqlFilter %v", filter.Filter)
 				fmt.Println(msg)
 				panic(msg)
 			}
@@ -320,14 +320,14 @@ func (q *Query) Limit(n int) nosql.Query {
 // TODO look for "count" functionality in the interface, rather than counting the rows
 func (q *Query) Count(ctx context.Context) (int64, error) {
 	dpanic("Query.Count")
-	it := q.Iterate()
+	it := q.Iterate().(*Iterator)
 	//defer it.Close() // closed automatically at the last Next()
 	var count int64
-	for it.(*Iterator).rows.Next() { // for speed, use the native Next
+	for it.rows.Next() { // for speed, use the native Next
 		count++
 	}
 	//fmt.Println("DEBUG count", count, it.Err())
-	return count, it.(*Iterator).err
+	return count, it.err
 }
 
 func (q *Query) One(ctx context.Context) (nosql.Document, error) {
@@ -412,9 +412,7 @@ func (it *Iterator) Key() nosql.Key {
 		return nil
 	}
 
-	var id string
-	var haveID bool
-	id, haveID = it.doc[idField].(string)
+	id, haveID := it.doc[idField].(string)
 	if haveID {
 		//fmt.Printf("DEBUG Iterator.Key fallback method doc[idField] %T %v\n", it.doc[idField], it.doc[idField])
 	} else {
@@ -454,7 +452,7 @@ func (it *Iterator) scanDoc() {
 type Delete struct {
 	db   *DB
 	col  string
-	q    nosql.Query
+	q    *Query
 	keys []interface{}
 }
 
@@ -474,8 +472,13 @@ func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
 func (d *Delete) Do(ctx context.Context) error {
 	dpanic("Delete.Do")
 
-	if len(d.keys) > 0 {
-		d.q.(*Query).ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$in": d.keys}
+	switch len(d.keys) {
+	case 0:
+	// nothing to do
+	case 1:
+		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$eq": d.keys[0]}
+	default:
+		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$in": d.keys}
 	}
 
 	// TODO only pull back the _id & _ref fields in the query, or better still used the delete API!
@@ -488,12 +491,12 @@ func (d *Delete) Do(ctx context.Context) error {
 	deleteSet := make(map[string]string)
 
 	for it.Next(ctx) {
-		if it.err != nil {
-			return it.err
-		}
 		id := it.doc[idField].(string)
 		rev := it.doc[revField].(string)
 		deleteSet[id] = rev
+	}
+	if it.err != nil {
+		return it.err
 	}
 	if err := it.Close(); err != nil {
 		return err
@@ -545,15 +548,14 @@ func (u *Update) Do(ctx context.Context) error {
 	if err == nosql.ErrNotFound {
 		if !u.upsert {
 			return err
-		} else {
-			var idKey nosql.Key
-			orig = u.update
-			idKey, rev, err = u.db.insert(u.col, u.key, orig)
-			if err != nil {
-				return err
-			}
-			id = toOuchValue(idField, idKey.Value()).(string)
 		}
+		var idKey nosql.Key
+		orig = u.update
+		idKey, rev, err = u.db.insert(u.col, u.key, orig)
+		if err != nil {
+			return err
+		}
+		id = toOuchValue(idField, idKey.Value()).(string)
 	} else {
 		if err != nil {
 			return err

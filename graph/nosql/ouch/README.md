@@ -19,4 +19,6 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 * work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB
 * add indexing
 * optimize: only pull back the _id & _ref fields in the delete query
+* investigate using []interface{} for key values in the Strings type - @dennwc said: "This was actually the reason why I dropped nosql.Key for Value interface - it's now the only array type that is supported. So if kivik can store json array, this can be an indication that Strings is stored there."
+
 	
