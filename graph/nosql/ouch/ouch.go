@@ -397,6 +397,10 @@ func (q *Query) Limit(n int) nosql.Query {
 // TODO look for "count" functionality in the interface, rather than counting the rows
 func (q *Query) Count(ctx context.Context) (int64, error) {
 	dpanic("Query.Count")
+
+	// don't pull back any fields in the query, to reduce bandwidth
+	q.ouchQuery["fields"] = []interface{}{}
+
 	it := q.Iterate().(*Iterator)
 	//defer it.Close() // closed automatically at the last Next()
 	var count int64
