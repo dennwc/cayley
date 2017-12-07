@@ -3,10 +3,12 @@ package ouch
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"os"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +44,20 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 	ctx := context.TODO()
 	if DBshouldNotExist {
 		if runtime.GOARCH == "js" && testDBname != remote {
-			return os.RemoveAll(testDBname)
+			fi, err := ioutil.ReadDir(".")
+			if err != nil {
+				return err
+			}
+			for _, thisFile := range fi {
+				fn := thisFile.Name()
+				if strings.HasPrefix(fn, "pouchdb") && strings.Contains(fn, ".test") {
+					dbDir := thisFile.Name() // TODO Windows tests
+					//fmt.Println("DEBUG remove all:", dbDir)
+					if err := os.RemoveAll(dbDir); err != nil {
+						return err
+					}
+				}
+			}
 		} else {
 			client, err := kivik.New(ctx, defaultDriverName, testDBname)
 			if err != nil {
@@ -78,6 +93,8 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 			return err
 		}
 	}
+
+	// TODO review: this compaction phase is fun, but adds needless complexity & is not run for most tests
 	err = db.(*DB).db.Compact(ctx)
 	if err != nil {
 		return err
@@ -133,6 +150,11 @@ func TestInsertDelete(t *testing.T) {
 			t.Error("DB open error", defaultDriverName, dbName, err)
 			return
 		}
+
+		dbc.(*DB).EnsureIndex("test", nosql.Index{
+			Fields: []string{"Vkey"},
+			Type:   nosql.StringExact,
+		}, nil)
 
 		key, err := dbc.Insert("test", nil, allsorts)
 		if err != nil {
@@ -256,5 +278,8 @@ func TestOuchAll(t *testing.T) {
 			TimeInMs:   false,
 			FloatToInt: false,
 		})
+		if runtime.GOARCH == "js" && dbName != remote {
+			deleteAllOuchDocs(dbName, true) // remove the PouchDB test files
+		}
 	}
 }

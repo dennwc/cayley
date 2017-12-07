@@ -95,8 +95,16 @@ func (db *DB) Close() error {
 	return nil
 }
 
+const (
+	collectionIndex   = "collection-index"
+	primaryIndexFmt   = "%s-primary"
+	secondaryIndexFmt = "%s-secondary-%d"
+)
+
 func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
 	dpanic("DB.EnsureIndex")
+	ctx := context.TODO()
+
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
@@ -105,9 +113,33 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 		primary:   primary,
 		secondary: secondary,
 	}
-	// TODO add indexes...
-	return nil
 
+	if err := db.db.CreateIndex(ctx, collectionIndex, collectionIndex,
+		map[string]interface{}{
+			"fields": []string{collectionField}, //  collection field only, default index
+		}); err != nil {
+		return err
+	}
+
+	pnam := fmt.Sprintf(primaryIndexFmt, col)
+	pindex := map[string]interface{}{
+		"fields": append([]string{collectionField}, primary.Fields...), //  preface with collection field
+	}
+	if err := db.db.CreateIndex(ctx, pnam, pnam, pindex); err != nil {
+		return err
+	}
+
+	for k, v := range secondary {
+		snam := fmt.Sprintf(secondaryIndexFmt, col, k)
+		sindex := map[string]interface{}{
+			"fields": append([]string{collectionField}, v.Fields...), // preface with collection field
+		}
+		if err := db.db.CreateIndex(ctx, snam, snam, sindex); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 const idField = "_id"
@@ -223,7 +255,9 @@ func (db *DB) findByKey(col string, key nosql.Key) (nosql.Document, string, stri
 
 func (db *DB) Query(col string) nosql.Query {
 	dpanic("DB.Query")
-	qry := &Query{db: db,
+	qry := &Query{
+		db:          db,
+		col:         col,
 		pathFilters: make(map[string][]nosql.FieldFilter),
 		ouchQuery: map[string]interface{}{
 			"selector": map[string]interface{}{},
@@ -250,6 +284,7 @@ type ouchQuery map[string]interface{}
 
 type Query struct {
 	db          *DB
+	col         string
 	pathFilters map[string][]nosql.FieldFilter
 	ouchQuery
 }
@@ -307,7 +342,49 @@ func (q *Query) buildFilters() nosql.Query {
 		q.ouchQuery["selector"].(map[string]interface{})[jp] = term
 	}
 
-	//fmt.Printf("DEBUG query %#v\n", q)
+	if len(q.pathFilters) == 0 {
+		q.ouchQuery["use_index"] = collectionIndex
+	} else {
+		// TODO usePrimary may be redundant, as the same as the _id
+		//fmt.Println("DEBUG pathfilters", q.pathFilters)
+		usePrimary := false
+		c, haveCol := q.db.colls[q.col]
+		if haveCol {
+			usePrimary = true
+			//fmt.Println("DEBUG primary index", c.primary.Fields)
+			for _, fieldName := range c.primary.Fields {
+				if _, found := q.pathFilters[fieldName]; !found {
+					usePrimary = false
+				}
+			}
+		}
+		if usePrimary {
+			q.ouchQuery["use_index"] = fmt.Sprintf(primaryIndexFmt, q.col)
+			//fmt.Printf("DEBUG query %#v\n", q)
+		} else {
+			if haveCol {
+				for si, sv := range c.secondary {
+					useSecondary := true
+					//fmt.Println("DEBUG secondary index", sv.Fields)
+					for _, fieldName := range sv.Fields {
+						if _, found := q.pathFilters[fieldName]; !found {
+							useSecondary = false
+						}
+					}
+					if useSecondary {
+						q.ouchQuery["use_index"] = fmt.Sprintf(secondaryIndexFmt, q.col, si)
+						//fmt.Printf("DEBUG query %#v\n", q)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// if q.ouchQuery["use_index"] == nil {
+	// 	fmt.Printf("DEBUG query NO INDEX %#v\n", q)
+	// }
+
 	return q
 }
 
@@ -474,14 +551,15 @@ func (d *Delete) Do(ctx context.Context) error {
 
 	switch len(d.keys) {
 	case 0:
-	// nothing to do
+	// no keys to test against
 	case 1:
 		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$eq": d.keys[0]}
 	default:
 		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$in": d.keys}
 	}
 
-	// TODO only pull back the _id & _ref fields in the query, or better still used the delete API!
+	// only pull back the _id & _rev fields in the query
+	d.q.ouchQuery["fields"] = []interface{}{idField, revField}
 
 	it := d.q.Iterate().(*Iterator)
 	if it.Err() != nil {
