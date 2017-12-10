@@ -13,30 +13,21 @@ import (
 
 // TODO remove this whole file and references to it once code is stable.
 
-var trace bool
-
-// DEBUG trace rather than panic
-func dpanic(s string) {
-	if trace {
-		println(s)
-	}
+func trace(x interface{}) {
+	fmt.Println("DEBUG trace", x)
 }
 
-var findStr = "alice"
-
-func (q *Query) debug() {
-	if trace {
-		if runtime.GOARCH == "js" {
-			qry := js.Global.Get("JSON").Call("stringify", q.ouchQuery).String()
-			//if strings.Contains(qry, findStr) {
+func (q *Query) debug(findStr string) {
+	if runtime.GOARCH == "js" {
+		qry := js.Global.Get("JSON").Call("stringify", q.ouchQuery).String()
+		if strings.Contains(qry, findStr) {
 			fmt.Println("DEBUG query marshal JS", qry)
-			//}
-		} else {
-			byts, err := json.Marshal(q.ouchQuery)
-			qry := string(byts)
-			//if strings.Contains(qry, findStr) {
+		}
+	} else {
+		byts, err := json.Marshal(q.ouchQuery)
+		qry := string(byts)
+		if strings.Contains(qry, findStr) {
 			fmt.Println("DEBUG query marshal", err, qry)
-			//}
 		}
 	}
 }
