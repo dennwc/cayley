@@ -4,7 +4,6 @@ To run "gopherjs test -v" you must "npm install pouchdb" (which actually runs on
 Also need to "npm install pouchdb-find" for queries.
 When running "gopherjs test" from the ouch directory, a pouchdb.test directory will be created (in .gitignore).
 
-
 To run "go test" a publiclly accessable CouchDB must be at "http://127.0.0.1:5984/ouchtest" with an administrator account testusername:testpassword (basic auth only, as this also works from the browser).
 
 Note from Discussion forum, re future nosql API alterations at https://discourse.cayley.io/t/running-cayley-in-the-browser/960/13
@@ -16,7 +15,7 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 
 * Report GopherJS bug type conversion in graph/graphtest/graphtest.go:IteratedQuads()
 * add Query.Limit() test
-* work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB
+* work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB, so as to test remote from jS
 * investigate using []interface{} for key values in the Strings type - @dennwc said: "This was actually the reason why I dropped nosql.Key for Value interface - it's now the only array type that is supported. So if kivik can store json array, this can be an indication that Strings is stored there."
 
 	

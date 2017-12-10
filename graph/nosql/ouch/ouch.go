@@ -24,12 +24,9 @@ func init() {
 }
 
 func dialDB(create bool, addr string, opt graph.Options) (*DB, error) {
-	//trace("dialDB")
 	ctx := context.TODO() // TODO - replace with parameter value
 
 	driver := defaultDriverName
-
-	//fmt.Println("DEBUG dialDB", driver, create, addr, opt)
 
 	addrParsed, err := url.Parse(addr)
 	if err != nil {
@@ -100,13 +97,11 @@ const (
 )
 
 func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
-	//trace("DB.EnsureIndex")
 	ctx := context.TODO()
 
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
-	//fmt.Println("DEBUG TODO DB.EnsureIndex", col, primary, secondary)
 	db.colls[col] = collection{
 		primary:   primary,
 		secondary: secondary,
@@ -149,16 +144,11 @@ func compKey(col string, key nosql.Key) string {
 }
 
 func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
-	//trace("DB.Insert")
 	k, _, e := db.insert(col, key, d)
 	return k, e
 }
 func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, string, error) {
-	//trace("DB.insert")
 	ctx := context.TODO() // TODO - replace with parameter value
-
-	// fmt.Println("DEBUG INSERT", col, key)
-	// fmt.Printf("doc: %#v\n", d)
 
 	if d == nil {
 		return nil, "", errors.New("no document to insert")
@@ -172,59 +162,39 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, st
 		var id string
 		_, id, rev, err = db.findByKey(col, key)
 		if err == nil {
-			// fmt.Println("DEBUG insert over existing record", key, rev)
 			rev, err = db.db.Delete(ctx, id, rev) // delete it to be sure it is removed
 			if err != nil {
-				// fmt.Println("DEBUG insert over existing record delete error", err)
 				return nil, "", err
 			}
 		}
 	}
 
 	if cP, found := db.colls[col]; found {
-		//fmt.Println("DEBUG INSERT KEY DEF", cP)
 		// go through the key list an put each in
 		if len(cP.primary.Fields) == len(key) {
 			for idx, nam := range cP.primary.Fields {
 				d[nam] = nosql.String(key[idx]) // just replace with the given key, even if there already
 			}
 		}
-	} else {
-		//fmt.Println("DEBUG INSERT NO KEY DEF")
 	}
 
 	interfaceDoc := toOuchDoc(col, toOuchValue(idField, key.Value()).(string), rev, d)
 
-	// for _, v := range interfaceDoc {
-	// 	if str, isStr := v.(string); isStr {
-	// 		if strings.Contains(str, findStr) {
-	// 			fmt.Printf("DEBUG insert native %#v\n", interfaceDoc)
-	// 			break
-	// 		}
-	// 	}
-	// }
-
 	_, rev, err := db.db.CreateDoc(ctx, interfaceDoc)
 	if err != nil {
-		//print("DEBUG Insert error " + err.Error())
 		return nil, "", err
 	}
-
-	//fmt.Println("DEBUG returned Insert Key:", key, interfaceDoc)
 
 	return key, rev, nil
 }
 
 func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
-	//trace("DB.FindByKey")
-
 	decoded, _, _, err := db.findByKey(col, key)
 
 	return decoded, err
 }
 
 func (db *DB) findByKey(col string, key nosql.Key) (nosql.Document, string, string, error) {
-	//trace("DB.findByKey")
 	ctx := context.TODO() // TODO - replace with parameter value
 
 	cK := compKey(col, key)
@@ -244,13 +214,10 @@ func (db *DB) findByKey(col string, key nosql.Key) (nosql.Document, string, stri
 	}
 	decoded := fromOuchDoc(rowDoc)
 
-	//fmt.Println("DEBUG", col, key, "FOUND", decoded)
-
 	return decoded, rowDoc[idField].(string), rowDoc[revField].(string), nil
 }
 
 func (db *DB) Query(col string) nosql.Query {
-	//trace("DB.Query")
 	qry := &Query{
 		db:          db,
 		col:         col,
@@ -266,13 +233,9 @@ func (db *DB) Query(col string) nosql.Query {
 	return qry
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
-	//trace("DB.Update")
-	//fmt.Println("DEBUG ", col, key)
 	return &Update{db: db, col: col, key: key, update: nosql.Document{}}
 }
 func (db *DB) Delete(col string) nosql.Delete {
-	//trace("DB.Delete")
-
 	return &Delete{db: db, col: col, q: db.Query(col).(*Query)}
 }
 
@@ -286,8 +249,6 @@ type Query struct {
 }
 
 func (q *Query) WithFields(filters ...nosql.FieldFilter) nosql.Query {
-	//trace("Query.WithFields")
-
 	for _, filter := range filters {
 		j := strings.Join(filter.Path, keySeparator)
 		q.pathFilters[j] = append(q.pathFilters[j], filter)
@@ -297,8 +258,6 @@ func (q *Query) WithFields(filters ...nosql.FieldFilter) nosql.Query {
 }
 
 func (q *Query) buildFilters() nosql.Query {
-	//trace("Query.WithFields")
-
 	for jp, filterList := range q.pathFilters {
 		term := map[string]interface{}{}
 		for _, filter := range filterList {
@@ -342,12 +301,10 @@ func (q *Query) buildFilters() nosql.Query {
 		q.ouchQuery["use_index"] = collectionIndex
 	} else {
 		// TODO usePrimary may be redundant, as the same as the _id
-		//fmt.Println("DEBUG pathfilters", q.pathFilters)
 		usePrimary := false
 		c, haveCol := q.db.colls[q.col]
 		if haveCol {
 			usePrimary = true
-			//fmt.Println("DEBUG primary index", c.primary.Fields)
 			for _, fieldName := range c.primary.Fields {
 				if _, found := q.pathFilters[fieldName]; !found {
 					usePrimary = false
@@ -356,12 +313,10 @@ func (q *Query) buildFilters() nosql.Query {
 		}
 		if usePrimary {
 			q.ouchQuery["use_index"] = fmt.Sprintf(primaryIndexFmt, q.col)
-			//fmt.Printf("DEBUG query %#v\n", q)
 		} else {
 			if haveCol {
 				for si, sv := range c.secondary {
 					useSecondary := true
-					//fmt.Println("DEBUG secondary index", sv.Fields)
 					for _, fieldName := range sv.Fields {
 						if _, found := q.pathFilters[fieldName]; !found {
 							useSecondary = false
@@ -369,7 +324,6 @@ func (q *Query) buildFilters() nosql.Query {
 					}
 					if useSecondary {
 						q.ouchQuery["use_index"] = fmt.Sprintf(secondaryIndexFmt, q.col, si)
-						//fmt.Printf("DEBUG query %#v\n", q)
 						break
 					}
 				}
@@ -377,23 +331,15 @@ func (q *Query) buildFilters() nosql.Query {
 		}
 	}
 
-	// if q.ouchQuery["use_index"] == nil {
-	// 	fmt.Printf("DEBUG query NO INDEX %#v\n", q)
-	// }
-
 	return q
 }
 
 func (q *Query) Limit(n int) nosql.Query {
-	//trace("Query.Limit")
 	q.ouchQuery["limit"] = n
 	return q
 }
 
-// TODO look for "count" functionality in the interface, rather than counting the rows
 func (q *Query) Count(ctx context.Context) (int64, error) {
-	//trace("Query.Count")
-
 	// don't pull back any fields in the query, to reduce bandwidth
 	q.ouchQuery["fields"] = []interface{}{}
 
@@ -403,12 +349,10 @@ func (q *Query) Count(ctx context.Context) (int64, error) {
 	for it.rows.Next() { // for speed, use the native Next
 		count++
 	}
-	//fmt.Println("DEBUG count", count, it.Err())
 	return count, it.err
 }
 
 func (q *Query) One(ctx context.Context) (nosql.Document, error) {
-	//trace("Query.One")
 	it := q.Iterate()
 	defer it.Close()
 	if err := it.Err(); err != nil {
@@ -421,10 +365,8 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 }
 
 func (q *Query) Iterate() nosql.DocIterator {
-	//trace("Query.Iterate")
 	ctx := context.TODO() // TODO - replace with parameter value
 	q.buildFilters()
-	//q.debug("")
 	rows, err := q.db.db.Find(ctx, q.ouchQuery)
 	return &Iterator{rows: rows, err: err}
 }
@@ -438,7 +380,6 @@ type Iterator struct {
 }
 
 func (it *Iterator) Next(ctx context.Context) bool {
-	//trace("Iterator.Next")
 	it.hadNext = true
 	if it.err != nil || it.closed {
 		return false
@@ -461,15 +402,10 @@ func (it *Iterator) Next(ctx context.Context) bool {
 }
 
 func (it *Iterator) Err() error {
-	//trace("Iterator.Err")
-	// if it.err != nil {
-	// 	trace(it.err.Error())
-	// }
 	return it.err
 }
 
 func (it *Iterator) Close() error {
-	//trace("Iterator.Close")
 	if it.err == nil && !it.closed {
 		it.err = it.rows.Close()
 	}
@@ -478,30 +414,24 @@ func (it *Iterator) Close() error {
 }
 
 func (it *Iterator) Key() nosql.Key {
-	//trace("Iterator.Key")
 	if it.err != nil || it.closed {
-		//fmt.Println("DEBUG iterator.Key nil return 1", it.err, it.closed)
 		return nil
 	}
 	if !it.hadNext {
 		it.err = errors.New("call to Iterator.Key before Iterator.Next")
-		//fmt.Println("DEBUG iterator.Key nil return 2", it.err)
 		return nil
 	}
 
 	id, haveID := it.doc[idField].(string)
-	if haveID {
-		//fmt.Printf("DEBUG Iterator.Key fallback method doc[idField] %T %v\n", it.doc[idField], it.doc[idField])
-	} else {
+	if !haveID {
 		it.err = fmt.Errorf("Iterator.Key ID empty")
 		return nil
 	}
 	ret := nosql.Key([]string(fromOuchValue("?", id).(nosql.Strings)))
-	//fmt.Println("DEBUG returned Iterator.Key:", ret)
 	return ret
 }
+
 func (it *Iterator) Doc() nosql.Document {
-	//trace("Iterator.Doc")
 	if it.err != nil || it.closed {
 		return nil
 	}
@@ -513,14 +443,9 @@ func (it *Iterator) Doc() nosql.Document {
 }
 
 func (it *Iterator) scanDoc() {
-	//trace("Iterator.doc")
 	if it.doc == nil && it.err == nil && !it.closed {
 		it.doc = map[string]interface{}{}
 		it.err = it.rows.ScanDoc(&it.doc)
-		// if it.err != nil {
-		// 	fmt.Printf("DEBUG Iterator.scandoc error %#v\n", it.err)
-		// }
-		// fmt.Println("DEBUG scanDoc:", it.doc)
 	}
 }
 
@@ -532,12 +457,10 @@ type Delete struct {
 }
 
 func (d *Delete) WithFields(filters ...nosql.FieldFilter) nosql.Delete {
-	//trace("Delete.WithFields")
 	d.q.WithFields(filters...)
 	return d
 }
 func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
-	//trace("Delete.Keys")
 	for _, k := range keys {
 		id := toOuchValue("?", k.Value()).(string)
 		d.keys = append(d.keys, id)
@@ -545,8 +468,6 @@ func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
 	return d
 }
 func (d *Delete) Do(ctx context.Context) error {
-	//trace("Delete.Do")
-
 	switch len(d.keys) {
 	case 0:
 	// no keys to test against
@@ -578,8 +499,6 @@ func (d *Delete) Do(ctx context.Context) error {
 		return err
 	}
 
-	//fmt.Println("DEBUG DELETE set", deleteSet)
-
 	for id, rev := range deleteSet {
 		_, err := d.db.db.Delete(ctx, id, rev)
 		if err != nil {
@@ -600,8 +519,6 @@ type Update struct {
 }
 
 func (u *Update) Inc(field string, dn int) nosql.Update {
-	//trace("Update.Inc")
-	//fmt.Println("DEBUG",field, dn)
 	if u.inc == nil {
 		u.inc = make(map[string]int)
 	}
@@ -610,8 +527,6 @@ func (u *Update) Inc(field string, dn int) nosql.Update {
 }
 
 func (u *Update) Upsert(d nosql.Document) nosql.Update {
-	//trace("Update.Upsert")
-	//fmt.Println("DEBUG", d)
 	u.upsert = true
 	for k, v := range d {
 		u.update[k] = v
@@ -619,7 +534,6 @@ func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	return u
 }
 func (u *Update) Do(ctx context.Context) error {
-	//trace("Update.Do")
 	orig, id, rev, err := u.db.findByKey(u.col, u.key)
 	if err == nosql.ErrNotFound {
 		if !u.upsert {

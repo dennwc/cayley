@@ -13,10 +13,6 @@ import (
 
 // TODO remove this whole file and references to it once code is stable.
 
-func trace(x interface{}) {
-	fmt.Println("DEBUG trace", x)
-}
-
 func (q *Query) debug(findStr string) {
 	if runtime.GOARCH == "js" {
 		qry := js.Global.Get("JSON").Call("stringify", q.ouchQuery).String()
