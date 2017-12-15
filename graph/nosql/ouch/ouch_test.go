@@ -17,7 +17,7 @@ import (
 	"github.com/cayleygraph/cayley/graph/nosql"
 	"github.com/cayleygraph/cayley/graph/nosql/nosqltest"
 	"github.com/cayleygraph/cayley/quad"
-	"github.com/flimzy/kivik"
+	"github.com/go-kivik/kivik"
 )
 
 const remote = "http://testusername:testpassword@127.0.0.1:5984/ouchtest"

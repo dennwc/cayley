@@ -10,7 +10,7 @@ import (
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/nosql"
 
-	"github.com/flimzy/kivik"
+	"github.com/go-kivik/kivik"
 )
 
 const Type = "ouch"
@@ -160,7 +160,7 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, st
 	} else {
 		var err error
 		var id string
-		_, id, rev, err = db.findByKey(col, key)
+		_, id, rev, err = db.findByKey(ctx, col, key)
 		if err == nil {
 			rev, err = db.db.Delete(ctx, id, rev) // delete it to be sure it is removed
 			if err != nil {
@@ -189,15 +189,17 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, st
 }
 
 func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
-	decoded, _, _, err := db.findByKey(col, key)
-
+	ctx := context.TODO() // TODO - replace with parameter value
+	decoded, _, _, err := db.findByKey(ctx, col, key)
 	return decoded, err
 }
 
-func (db *DB) findByKey(col string, key nosql.Key) (nosql.Document, string, string, error) {
-	ctx := context.TODO() // TODO - replace with parameter value
-
+func (db *DB) findByKey(ctx context.Context, col string, key nosql.Key) (nosql.Document, string, string, error) {
 	cK := compKey(col, key)
+	return db.findByOuchKey(ctx, cK)
+}
+
+func (db *DB) findByOuchKey(ctx context.Context, cK string) (nosql.Document, string, string, error) {
 
 	row, err := db.db.Get(ctx, cK)
 	if err != nil {
@@ -468,35 +470,50 @@ func (d *Delete) Keys(keys ...nosql.Key) nosql.Delete {
 	return d
 }
 func (d *Delete) Do(ctx context.Context) error {
+
+	deleteSet := make(map[string]string) // [_id]_rev
+
 	switch len(d.keys) {
 	case 0:
 	// no keys to test against
 	case 1:
-		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$eq": d.keys[0]}
+		if len(d.q.pathFilters) == 0 {
+			// this special case is optimised not to use the query/iterate route at all,
+			// but rather to fetch the _id and _rev directly from the given key.
+			_, id, rev, err := d.db.findByOuchKey(ctx, d.keys[0].(string))
+			if err != nil {
+				return err
+			}
+			deleteSet[id] = rev
+		} else {
+			d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$eq": d.keys[0]}
+		}
+
 	default:
 		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$in": d.keys}
 	}
 
-	// only pull back the _id & _rev fields in the query
-	d.q.ouchQuery["fields"] = []interface{}{idField, revField}
+	if len(deleteSet) == 0 { // did not hit the special case, so must do a mango query
 
-	it := d.q.Iterate().(*Iterator)
-	if it.Err() != nil {
-		return it.Err()
-	}
+		// only pull back the _id & _rev fields in the query
+		d.q.ouchQuery["fields"] = []interface{}{idField, revField}
 
-	deleteSet := make(map[string]string)
+		it := d.q.Iterate().(*Iterator)
+		if it.Err() != nil {
+			return it.Err()
+		}
 
-	for it.Next(ctx) {
-		id := it.doc[idField].(string)
-		rev := it.doc[revField].(string)
-		deleteSet[id] = rev
-	}
-	if it.err != nil {
-		return it.err
-	}
-	if err := it.Close(); err != nil {
-		return err
+		for it.Next(ctx) {
+			id := it.doc[idField].(string)
+			rev := it.doc[revField].(string)
+			deleteSet[id] = rev
+		}
+		if it.err != nil {
+			return it.err
+		}
+		if err := it.Close(); err != nil {
+			return err
+		}
 	}
 
 	for id, rev := range deleteSet {
@@ -534,7 +551,7 @@ func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	return u
 }
 func (u *Update) Do(ctx context.Context) error {
-	orig, id, rev, err := u.db.findByKey(u.col, u.key)
+	orig, id, rev, err := u.db.findByKey(ctx, u.col, u.key)
 	if err == nosql.ErrNotFound {
 		if !u.upsert {
 			return err
