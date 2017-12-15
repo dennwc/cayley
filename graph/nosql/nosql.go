@@ -3,8 +3,9 @@ package nosql
 import (
 	"context"
 	"errors"
-	"github.com/pborman/uuid"
 	"time"
+
+	"github.com/pborman/uuid"
 )
 
 var (
