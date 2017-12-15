@@ -116,7 +116,7 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 
 	pnam := fmt.Sprintf(primaryIndexFmt, col)
 	pindex := map[string]interface{}{
-		"fields": append([]string{collectionField}, primary.Fields...), //  preface with collection field
+		"fields": primary.Fields,
 	}
 	if err := db.db.CreateIndex(ctx, pnam, pnam, pindex); err != nil {
 		return err
@@ -125,7 +125,7 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 	for k, v := range secondary {
 		snam := fmt.Sprintf(secondaryIndexFmt, col, k)
 		sindex := map[string]interface{}{
-			"fields": append([]string{collectionField}, v.Fields...), // preface with collection field
+			"fields": v.Fields,
 		}
 		if err := db.db.CreateIndex(ctx, snam, snam, sindex); err != nil {
 			return err
@@ -369,6 +369,11 @@ func (q *Query) One(ctx context.Context) (nosql.Document, error) {
 func (q *Query) Iterate() nosql.DocIterator {
 	ctx := context.TODO() // TODO - replace with parameter value
 	q.buildFilters()
+
+	// NOTE: to see that the query actually is using the index, uncomment the line below
+	// queryPlan, err := q.db.db.Explain(ctx, q.ouchQuery)
+	// fmt.Printf("DEBUG %v QueryPlan: %#v\n", err, queryPlan)
+
 	rows, err := q.db.db.Find(ctx, q.ouchQuery)
 	return &Iterator{rows: rows, err: err}
 }
