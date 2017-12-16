@@ -92,7 +92,6 @@ func (db *DB) Close() error {
 
 const (
 	collectionIndex   = "collection-index"
-	primaryIndexFmt   = "%s-primary"
 	secondaryIndexFmt = "%s-secondary-%d"
 )
 
@@ -102,9 +101,29 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
-	db.colls[col] = collection{
-		primary:   primary,
-		secondary: secondary,
+
+	// Kludge to index nodes.Names|val ... TODO make more elegant
+	switch col {
+	case "nodes":
+		db.colls[col] = collection{
+			primary: primary,
+			secondary: append(
+				secondary,
+				nosql.Index{
+					Fields: []string{"Name"},
+					Type:   primary.Type,
+				},
+				nosql.Index{
+					Fields: []string{"Name|val"},
+					Type:   primary.Type,
+				}),
+		}
+	// TODO does "log" collection require a further index?
+	default:
+		db.colls[col] = collection{
+			primary:   primary,
+			secondary: secondary,
+		}
 	}
 
 	if err := db.db.CreateIndex(ctx, collectionIndex, collectionIndex,
@@ -114,15 +133,9 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 		return err
 	}
 
-	pnam := fmt.Sprintf(primaryIndexFmt, col)
-	pindex := map[string]interface{}{
-		"fields": primary.Fields,
-	}
-	if err := db.db.CreateIndex(ctx, pnam, pnam, pindex); err != nil {
-		return err
-	}
+	// NOTE the field of the primary index is always "id", so need not create an index
 
-	for k, v := range secondary {
+	for k, v := range db.colls[col].secondary {
 		snam := fmt.Sprintf(secondaryIndexFmt, col, k)
 		sindex := map[string]interface{}{
 			"fields": v.Fields,
@@ -135,9 +148,11 @@ func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Ind
 	return nil
 }
 
-const idField = "_id"
-const revField = "_rev"
-const collectionField = "Collection"
+const (
+	idField         = "_id"
+	revField        = "_rev"
+	collectionField = "Collection"
+)
 
 func compKey(col string, key nosql.Key) string {
 	return "K" + strings.Join(key, "|")
@@ -266,14 +281,17 @@ func (q *Query) buildFilters() nosql.Query {
 			test := ""
 			testValue := toOuchValue(".", filter.Value)
 			if stringValue, isString := testValue.(string); isString && len(stringValue) > 0 {
+				typeChar := stringValue[0]
+				typeCharNext := typeChar + 1
 				switch filter.Filter {
 				case nosql.Equal, nosql.NotEqual:
 				// nothing to do as not a relative test
+				case nosql.LT, nosql.LTE:
+					term["$gte"] = string(typeChar) // set the lower bound
+				case nosql.GT, nosql.GTE:
+					term["$lt"] = string(typeCharNext) // set the upper bound
 				default:
-					typeChar := stringValue[0]
-					term["$gte"] = string(typeChar)
-					typeCharNext := typeChar + 1
-					term["$lt"] = string(typeCharNext)
+					// panic in the switch below
 				}
 			}
 			switch filter.Filter {
@@ -302,32 +320,19 @@ func (q *Query) buildFilters() nosql.Query {
 	if len(q.pathFilters) == 0 {
 		q.ouchQuery["use_index"] = collectionIndex
 	} else {
-		// TODO usePrimary may be redundant, as the same as the _id
-		usePrimary := false
+		// NOTE primary is redundant, as the same as the _id
 		c, haveCol := q.db.colls[q.col]
 		if haveCol {
-			usePrimary = true
-			for _, fieldName := range c.primary.Fields {
-				if _, found := q.pathFilters[fieldName]; !found {
-					usePrimary = false
+			for si, sv := range c.secondary {
+				useSecondary := true
+				for _, fieldName := range sv.Fields {
+					if _, found := q.pathFilters[fieldName]; !found {
+						useSecondary = false
+					}
 				}
-			}
-		}
-		if usePrimary {
-			q.ouchQuery["use_index"] = fmt.Sprintf(primaryIndexFmt, q.col)
-		} else {
-			if haveCol {
-				for si, sv := range c.secondary {
-					useSecondary := true
-					for _, fieldName := range sv.Fields {
-						if _, found := q.pathFilters[fieldName]; !found {
-							useSecondary = false
-						}
-					}
-					if useSecondary {
-						q.ouchQuery["use_index"] = fmt.Sprintf(secondaryIndexFmt, q.col, si)
-						break
-					}
+				if useSecondary {
+					q.ouchQuery["use_index"] = fmt.Sprintf(secondaryIndexFmt, q.col, si)
+					break
 				}
 			}
 		}
@@ -370,9 +375,12 @@ func (q *Query) Iterate() nosql.DocIterator {
 	ctx := context.TODO() // TODO - replace with parameter value
 	q.buildFilters()
 
-	// NOTE: to see that the query actually is using the index, uncomment the line below
+	// NOTE: to see that the query actually is using an index, uncomment the lines below
 	// queryPlan, err := q.db.db.Explain(ctx, q.ouchQuery)
-	// fmt.Printf("DEBUG %v QueryPlan: %#v\n", err, queryPlan)
+	// debug := fmt.Sprintf("DEBUG %v QueryPlan: %#v", err, queryPlan)
+	// if strings.Contains(debug, collectionIndex) { // put the index you're interested in here
+	// 	fmt.Println(debug)
+	// }
 
 	rows, err := q.db.db.Find(ctx, q.ouchQuery)
 	return &Iterator{rows: rows, err: err}
@@ -497,6 +505,8 @@ func (d *Delete) Do(ctx context.Context) error {
 	default:
 		d.q.ouchQuery["selector"].(map[string]interface{})[idField] = map[string]interface{}{"$in": d.keys}
 	}
+
+	// NOTE even when using idField in a Mango query, it still has to base its query on an index
 
 	if len(deleteSet) == 0 { // did not hit the special case, so must do a mango query
 

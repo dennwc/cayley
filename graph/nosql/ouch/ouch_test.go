@@ -34,7 +34,7 @@ func testDB(DBshouldNotExist bool) ([]string, error) {
 	}
 	for _, r := range ret {
 		if err := deleteAllOuchDocs(r, DBshouldNotExist); err != nil {
-			fmt.Println("DEBUG delete test db", r, "error: ", err)
+			fmt.Println("INFORMATION: delete test db", r, "error: ", err)
 		}
 	}
 	return ret, nil
@@ -52,7 +52,6 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 				fn := thisFile.Name()
 				if strings.HasPrefix(fn, "pouchdb") && strings.Contains(fn, ".test") {
 					dbDir := thisFile.Name() // TODO Windows tests
-					//fmt.Println("DEBUG remove all:", dbDir)
 					if err := os.RemoveAll(dbDir); err != nil {
 						return err
 					}
@@ -69,7 +68,6 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 
 	db, err := Open(testDBname, graph.Options{})
 	if err != nil {
-		fmt.Printf("DEBUG deleteAllOuchDocs() failed open error:", err)
 		_, err = Create(testDBname, nil)
 		return err
 	}
@@ -82,7 +80,6 @@ func deleteAllOuchDocs(testDBname string, DBshouldNotExist bool) error {
 	defer rows.Close()
 
 	for rows.Next() {
-		//fmt.Println("deleteAllOuchDocs", rows.ID())
 		doc := map[string]interface{}{}
 		err = rows.ScanDoc(&doc)
 		if err != nil {
@@ -115,10 +112,9 @@ var allsorts = nosql.Document{
 	"Vnil": nil,
 	"VDocument": nosql.Document{
 		"val":   nosql.String("test"),
-		"iri":   nosql.Bool(false),
+		"iri":   nosql.Bool(true),
 		"bnode": nosql.Bool(false),
 	},
-	//	"VArray":  nosql.Array{nosql.String("A"), nosql.String("B"), nosql.String("C")},
 	"VKey":    nosql.Key{"1", "2", "3"}.Value(),
 	"VString": nosql.String("TEST"),
 	"VInt":    nosql.Int(42),
@@ -130,8 +126,6 @@ var allsorts = nosql.Document{
 
 // TestInsertDelete does very basic testing
 func TestInsertDelete(t *testing.T) {
-	// trace = true
-	// defer func() { trace = false }()
 
 	dbNames, err := testDB(false)
 	if err != nil {
@@ -203,9 +197,6 @@ func TestHelloWorld(t *testing.T) {
 		return
 	}
 
-	// trace = true
-	// defer func() { trace = false }()
-
 	for _, dbName := range dbNames {
 
 		if runtime.GOARCH == "js" {
@@ -249,9 +240,6 @@ func TestHelloWorld(t *testing.T) {
 var dbId int
 
 func TestOuchAll(t *testing.T) {
-
-	// trace = false
-	// defer func() { trace = false }()
 
 	dbNames, err := testDB(true)
 	if err != nil {

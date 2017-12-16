@@ -56,7 +56,6 @@ func toOuchValue(k string, v nosql.Value) interface{} {
 	case nosql.Bytes: // special handling here, as type can't be inferred from json
 		return "B" + base64.StdEncoding.EncodeToString(v)
 	default:
-		//fmt.Println("DEBUG unsupported type: %T", v)
 		panic(fmt.Errorf("unsupported type: %T", v))
 	}
 }
@@ -189,7 +188,6 @@ func fromOuchValue(k string, v interface{}) nosql.Value {
 			return nosql.Int(stoi(v))
 
 		default:
-			// fmt.Printf("DEBUG unsupported serialized type: %v%v", typ, v)
 			panic(fmt.Errorf("unsupported serialized type: %v%v", typ, v))
 		}
 	case float64:
@@ -197,7 +195,6 @@ func fromOuchValue(k string, v interface{}) nosql.Value {
 	case bool:
 		return nosql.Bool(v)
 	default:
-		// fmt.Printf("DEBUG unsupported type: %T", v)
 		panic(fmt.Errorf("unsupported type: %T", v))
 	}
 }
@@ -215,7 +212,6 @@ func fromOuchDoc(d map[string]interface{}) nosql.Document {
 		if k[0] != ' ' { // ignore any other ouch driver internal keys
 			if path := strings.Split(k, keySeparator); len(path) > 1 {
 				if len(path) != 2 {
-					fmt.Println("DEBUG nosql.Document nesting too deep")
 					panic("nosql.Document nesting too deep")
 				}
 				// we have a sub-document

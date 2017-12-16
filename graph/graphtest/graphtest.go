@@ -141,7 +141,7 @@ func IteratedQuads(t testing.TB, qs graph.QuadStore, it graph.Iterator) []quad.Q
 	if res == nil {
 		return []quad.Quad(nil) // GopherJS seems to have a bug with this type conversion for a nil value
 	}
-	return res
+	return res // NOTE implicit type conversion from quad.ByQuadString to []quad.Quad
 }
 
 func ExpectIteratedQuads(t testing.TB, qs graph.QuadStore, it graph.Iterator, exp []quad.Quad, sortQuads bool) {

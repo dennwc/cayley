@@ -16,6 +16,9 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 * Report GopherJS bug type conversion in graph/graphtest/graphtest.go:IteratedQuads()
 * add Query.Limit() test
 * work out how to delete test db remotely from JS using PouchDB as front-end to CouchDB, so as to test remote from jS
+* remove all panic() code
+* return errors in from/to Ouch Value/Doc
+* test on live app with instrumentation, to find further optimisation possibilities
 * investigate using []interface{} for key values in the Strings type - @dennwc said: "This was actually the reason why I dropped nosql.Key for Value interface - it's now the only array type that is supported. So if kivik can store json array, this can be an indication that Strings is stored there."
 
 	
