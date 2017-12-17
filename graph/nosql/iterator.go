@@ -16,6 +16,7 @@ package nosql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cayleygraph/cayley/clog"
 	"github.com/cayleygraph/cayley/graph"
@@ -157,7 +158,7 @@ func (it *Iterator) Next() bool {
 			string(sh), string(ph), string(oh), string(lh),
 		}
 	} else {
-		id, _ := doc[fldID].(String)
+		id, _ := doc[fldHash].(String)
 		it.result = NodeHash(id)
 	}
 	return true
@@ -215,14 +216,8 @@ func (it *Iterator) Type() graph.Type {
 func (it *Iterator) Sorted() bool                     { return true }
 func (it *Iterator) Optimize() (graph.Iterator, bool) { return it, false }
 
-func (it *Iterator) Describe() graph.Description {
-	size, _ := it.Size()
-	return graph.Description{
-		UID:  it.UID(),
-		Name: string(it.hash),
-		Type: it.Type(),
-		Size: size,
-	}
+func (it *Iterator) String() string {
+	return fmt.Sprintf("NoSQL(%v)", it.collection)
 }
 
 func (it *Iterator) Stats() graph.IteratorStats {

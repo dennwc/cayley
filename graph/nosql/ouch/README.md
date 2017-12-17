@@ -21,4 +21,14 @@ Note from Discussion forum, re future nosql API alterations at https://discourse
 * test on live app with instrumentation, to find further optimisation possibilities
 * investigate using []interface{} for key values in the Strings type - @dennwc said: "This was actually the reason why I dropped nosql.Key for Value interface - it's now the only array type that is supported. So if kivik can store json array, this can be an indication that Strings is stored there."
 
-	
+
+
+## other change
+
+ graph/graphtest/graphtest.go:141 IteratedQuads()
+ ```
+    if res == nil {
+        return []quad.Quad(nil) // GopherJS seems to have a bug with this type conversion for a nil value
+    }
+    return res // NOTE implicit type conversion from quad.ByQuadString to []quad.Quad
+ ```

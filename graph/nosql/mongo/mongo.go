@@ -16,6 +16,10 @@ import (
 
 const Type = "mongo"
 
+var (
+	_ nosql.BatchInserter = (*DB)(nil)
+)
+
 func init() {
 	nosql.Register(Type, nosql.Registration{
 		NewFunc:      Open,
@@ -98,7 +102,11 @@ func (db *DB) Close() error {
 	db.sess.Close()
 	return nil
 }
+<<<<<<< HEAD
 func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
+=======
+func (db *DB) EnsureIndex(ctx context.Context, col string, primary nosql.Index, secondary []nosql.Index) error {
+>>>>>>> dennwc/nosql
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
@@ -234,6 +242,20 @@ func (c *collection) getKey(m bson.M) nosql.Key {
 	return key
 }
 
+<<<<<<< HEAD
+=======
+func (c *collection) setKey(m bson.M, key nosql.Key) {
+	if !c.compPK {
+		// delete source field, since we already added it as _id
+		delete(m, c.primary.Fields[0])
+	} else {
+		for i, f := range c.primary.Fields {
+			m[f] = string(key[i])
+		}
+	}
+}
+
+>>>>>>> dennwc/nosql
 func (c *collection) convDoc(m bson.M) nosql.Document {
 	if c.compPK {
 		// key field computed from multiple source fields - remove it
@@ -248,6 +270,33 @@ func (c *collection) convDoc(m bson.M) nosql.Document {
 	return fromBsonDoc(m)
 }
 
+<<<<<<< HEAD
+=======
+func getOrGenID(key nosql.Key) (nosql.Key, string) {
+	var mid string
+	if key == nil {
+		// TODO: maybe allow to pass custom key types as nosql.Key
+		oid := objidString(bson.NewObjectId())
+		mid = oid
+		key = nosql.Key{oid}
+	} else {
+		mid = compKey(key)
+	}
+	return key, mid
+}
+
+func (c *collection) convIns(key nosql.Key, d nosql.Document) (nosql.Key, bson.M) {
+	m := toBsonDoc(d)
+
+	var mid string
+	key, mid = getOrGenID(key)
+	m[idField] = mid
+	c.setKey(m, key)
+
+	return key, m
+}
+
+>>>>>>> dennwc/nosql
 func objidString(id bson.ObjectId) string {
 	return hex.EncodeToString([]byte(id))
 }
@@ -259,6 +308,7 @@ func compKey(key nosql.Key) string {
 	return strings.Join(key, "")
 }
 
+<<<<<<< HEAD
 func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
 	m := toBsonDoc(d)
 	var mid interface{}
@@ -270,10 +320,14 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 	} else {
 		mid = compKey(key)
 	}
+=======
+func (db *DB) Insert(ctx context.Context, col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
+>>>>>>> dennwc/nosql
 	c, ok := db.colls[col]
 	if !ok {
 		return nil, fmt.Errorf("collection %q not found", col)
 	}
+<<<<<<< HEAD
 	m[idField] = mid
 	if !c.compPK {
 		// delete source field, since we already added it as _id
@@ -283,12 +337,19 @@ func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, er
 			m[f] = string(key[i])
 		}
 	}
+=======
+	key, m := c.convIns(key, d)
+>>>>>>> dennwc/nosql
 	if err := c.c.Insert(m); err != nil {
 		return nil, err
 	}
 	return key, nil
 }
+<<<<<<< HEAD
 func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
+=======
+func (db *DB) FindByKey(ctx context.Context, col string, key nosql.Key) (nosql.Document, error) {
+>>>>>>> dennwc/nosql
 	c := db.colls[col]
 	var m bson.M
 	err := c.c.FindId(compKey(key)).One(&m)
@@ -305,11 +366,19 @@ func (db *DB) Query(col string) nosql.Query {
 }
 func (db *DB) Update(col string, key nosql.Key) nosql.Update {
 	c := db.colls[col]
+<<<<<<< HEAD
 	return &Update{col: c, key: key, update: make(bson.M)}
 }
 func (db *DB) Delete(col string) nosql.Delete {
 	c := db.colls[col]
 	return &Delete{col: c}
+=======
+	return &Update{col: &c, key: key, update: make(bson.M)}
+}
+func (db *DB) Delete(col string) nosql.Delete {
+	c := db.colls[col]
+	return &Delete{col: &c}
+>>>>>>> dennwc/nosql
 }
 
 func buildFilters(filters []nosql.FieldFilter) bson.M {
@@ -417,7 +486,11 @@ func (it *Iterator) Doc() nosql.Document {
 }
 
 type Delete struct {
+<<<<<<< HEAD
 	col   collection
+=======
+	col   *collection
+>>>>>>> dennwc/nosql
 	query bson.M
 }
 
@@ -461,7 +534,11 @@ func (d *Delete) Do(ctx context.Context) error {
 }
 
 type Update struct {
+<<<<<<< HEAD
 	col    collection
+=======
+	col    *collection
+>>>>>>> dennwc/nosql
 	key    nosql.Key
 	upsert bson.M
 	update bson.M
@@ -490,17 +567,85 @@ func (u *Update) Upsert(d nosql.Document) nosql.Update {
 	if u.upsert == nil {
 		u.upsert = make(bson.M)
 	}
+<<<<<<< HEAD
 	return u
 }
 func (u *Update) Do(ctx context.Context) error {
+=======
+	u.col.setKey(u.upsert, u.key)
+	return u
+}
+func (u *Update) Do(ctx context.Context) error {
+	key := compKey(u.key)
+>>>>>>> dennwc/nosql
 	var err error
 	if u.upsert != nil {
 		if len(u.upsert) != 0 {
 			u.update["$setOnInsert"] = u.upsert
 		}
+<<<<<<< HEAD
 		_, err = u.col.c.UpsertId(u.key, u.update)
 	} else {
 		err = u.col.c.UpdateId(u.key, u.update)
 	}
 	return err
 }
+=======
+		_, err = u.col.c.UpsertId(key, u.update)
+	} else {
+		err = u.col.c.UpdateId(key, u.update)
+	}
+	return err
+}
+
+func (db *DB) BatchInsert(col string) nosql.DocWriter {
+	c := db.colls[col]
+	return &inserter{col: &c}
+}
+
+const batchSize = 100
+
+type inserter struct {
+	col   *collection
+	buf   []interface{}
+	ikeys []nosql.Key
+	keys  []nosql.Key
+	err   error
+}
+
+func (w *inserter) WriteDoc(ctx context.Context, key nosql.Key, d nosql.Document) error {
+	if len(w.buf) >= batchSize {
+		if err := w.Flush(ctx); err != nil {
+			return err
+		}
+	}
+	key, m := w.col.convIns(key, d)
+	w.buf = append(w.buf, m)
+	w.ikeys = append(w.ikeys, key)
+	return nil
+}
+
+func (w *inserter) Flush(ctx context.Context) error {
+	if len(w.buf) == 0 {
+		return w.err
+	}
+	if err := w.col.c.Insert(w.buf...); err != nil {
+		w.err = err
+		return err
+	}
+	w.keys = append(w.keys, w.ikeys...)
+	w.ikeys = w.ikeys[:0]
+	w.buf = w.buf[:0]
+	return w.err
+}
+
+func (w *inserter) Keys() []nosql.Key {
+	return w.keys
+}
+
+func (w *inserter) Close() error {
+	w.ikeys = nil
+	w.buf = nil
+	return w.err
+}
+>>>>>>> dennwc/nosql

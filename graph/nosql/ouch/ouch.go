@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"runtime"
 	"strings"
 
 	"github.com/cayleygraph/cayley/graph"
@@ -95,8 +96,7 @@ const (
 	secondaryIndexFmt = "%s-secondary-%d"
 )
 
-func (db *DB) EnsureIndex(col string, primary nosql.Index, secondary []nosql.Index) error {
-	ctx := context.TODO()
+func (db *DB) EnsureIndex(ctx context.Context, col string, primary nosql.Index, secondary []nosql.Index) error {
 
 	if primary.Type != nosql.StringExact {
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
@@ -158,12 +158,11 @@ func compKey(col string, key nosql.Key) string {
 	return "K" + strings.Join(key, "|")
 }
 
-func (db *DB) Insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
-	k, _, e := db.insert(col, key, d)
+func (db *DB) Insert(ctx context.Context, col string, key nosql.Key, d nosql.Document) (nosql.Key, error) {
+	k, _, e := db.insert(ctx, col, key, d)
 	return k, e
 }
-func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, string, error) {
-	ctx := context.TODO() // TODO - replace with parameter value
+func (db *DB) insert(ctx context.Context, col string, key nosql.Key, d nosql.Document) (nosql.Key, string, error) {
 
 	if d == nil {
 		return nil, "", errors.New("no document to insert")
@@ -203,8 +202,7 @@ func (db *DB) insert(col string, key nosql.Key, d nosql.Document) (nosql.Key, st
 	return key, rev, nil
 }
 
-func (db *DB) FindByKey(col string, key nosql.Key) (nosql.Document, error) {
-	ctx := context.TODO() // TODO - replace with parameter value
+func (db *DB) FindByKey(ctx context.Context, col string, key nosql.Key) (nosql.Document, error) {
 	decoded, _, _, err := db.findByKey(ctx, col, key)
 	return decoded, err
 }
@@ -298,7 +296,16 @@ func (q *Query) buildFilters() nosql.Query {
 			case nosql.Equal:
 				test = "$eq"
 			case nosql.NotEqual:
-				test = "$ne"
+				if boolVal, isBool := testValue.(bool); isBool && boolVal && runtime.GOARCH != "js" {
+					// swap the test (required to make it work for missing values in CouchDB)
+					test = "$or"
+					testValue = []interface{}{
+						map[string]interface{}{"$eq": false}, // it was $ne true
+						map[string]interface{}{"$exists": false},
+					}
+				} else {
+					test = "$ne"
+				}
 			case nosql.GT:
 				test = "$gt"
 			case nosql.GTE:
@@ -347,6 +354,8 @@ func (q *Query) Limit(n int) nosql.Query {
 }
 
 func (q *Query) Count(ctx context.Context) (int64, error) {
+	// TODO it shoud be possible to use map/reduce logic, rather than a mango query, to speed this up, at least for some cases
+
 	// don't pull back any fields in the query, to reduce bandwidth
 	q.ouchQuery["fields"] = []interface{}{}
 
@@ -573,7 +582,7 @@ func (u *Update) Do(ctx context.Context) error {
 		}
 		var idKey nosql.Key
 		orig = u.update
-		idKey, rev, err = u.db.insert(u.col, u.key, orig)
+		idKey, rev, err = u.db.insert(ctx, u.col, u.key, orig)
 		if err != nil {
 			return err
 		}

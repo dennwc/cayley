@@ -1,6 +1,7 @@
 package ouch
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -30,7 +31,7 @@ func (q *Query) debug(findStr string) {
 
 // checkDoc is what we expect it to be - used by tests, can also be used as debug from main code during testing.
 func (db *DB) checkDoc(col string, key nosql.Key, d nosql.Document) error {
-	decoded, err := db.FindByKey(col, key)
+	decoded, err := db.FindByKey(context.TODO(), col, key)
 
 	if err != nil {
 		return fmt.Errorf("unable to find record to check FindByKey '%v' error: %v", key, err)

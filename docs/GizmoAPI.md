@@ -273,7 +273,7 @@ Usually useful for starting with all nodes, or limiting to a subset depending on
 Arguments:
 
 * `predicate`: A string for a predicate node.
-* `object`: A string for a object node.
+* `object`: A string for a object node or a set of filters to find it.
 
 Example:
 ```javascript
@@ -281,6 +281,8 @@ Example:
 g.V().Has("<follows>", "<bob>").All()
 // People charlie follows who then follow fred. Results in bob.
 g.V("<charlie>").Out("<follows>").Has("<follows>", "<fred>").All()
+// People with friends who have names sorting lower then "f".
+g.V().Has("<follows>", gt("<f>")).All()
 ```
 
 
@@ -488,6 +490,30 @@ Example:
 //   {"id" : "<dani>", "target": "<bob>" },
 //   {"id" : "<dani>", "target": "<greg>" }
 g.V("<dani>", "<bob>").Save("<follows>", "target").All()
+```
+
+
+### `path.SaveInPredicates(tag)`
+
+SaveInPredicates tags the list of predicates that are pointing in to a node.
+
+Example:
+```javascript
+// bob only has "<follows>" predicates pointing inward
+// returns {"id":"<bob>", "pred":"<follows>"}
+g.V("<bob>").SaveInPredicates("pred").All()
+```
+
+
+### `path.SaveOutPredicates(tag)`
+
+SaveOutPredicates tags the list of predicates that are pointing out from a node.
+
+Example:
+```javascript
+// bob has "<follows>" and "<status>" edges pointing outwards
+// returns {"id":"<bob>", "pred":"<follows>"}
+g.V("<bob>").SaveInPredicates("pred").All()
 ```
 
 

@@ -310,6 +310,13 @@ var testQueries = []struct {
 		`,
 		expect: []string{"<bob>"},
 	},
+	{
+		message: "show a Has with filter",
+		query: `
+				g.V().Has("<follows>", gt("<f>")).All()
+		`,
+		expect: []string{"<bob>", "<dani>", "<emily>", "<fred>"},
+	},
 
 	// Skip/Limit tests.
 	{
@@ -402,6 +409,14 @@ var testQueries = []struct {
 		  g.V("<bob>").InPredicates().All()
 		`,
 		expect: []string{"<follows>"},
+	},
+	{
+		message: "save all bob's incoming predicates",
+		query: `
+		  g.V("<bob>").SaveInPredicates("pred").All()
+		`,
+		expect: []string{"<follows>"},
+		tag:    "pred",
 	},
 	{
 		message: "list all labels",

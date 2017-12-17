@@ -77,7 +77,7 @@ func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
 		}
 		err = client.DestroyDB(ctx, testDBname)
 		if err != nil {
-			t.Fatal(err)
+			t.Log(err)
 		}
 	}
 
@@ -117,15 +117,16 @@ var allsorts = nosql.Document{
 
 // TestInsertDelete does very basic testing
 func TestInsertDelete(t *testing.T) {
+	ctx := context.TODO()
 	dbc, _, cleanup := makeOuch(testing.TB(t))
 	defer cleanup()
 
-	dbc.(*DB).EnsureIndex("test", nosql.Index{
+	dbc.(*DB).EnsureIndex(ctx, "test", nosql.Index{
 		Fields: []string{"Vkey"},
 		Type:   nosql.StringExact,
 	}, nil)
 
-	key, err := dbc.Insert("test", nil, allsorts)
+	key, err := dbc.Insert(ctx, "test", nil, allsorts)
 	if err != nil {
 		t.Error("insert error", err)
 	}
@@ -135,7 +136,7 @@ func TestInsertDelete(t *testing.T) {
 	if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
 		t.Error(err)
 	}
-	if doc, err := dbc.(*DB).FindByKey("test", key); err != nosql.ErrNotFound {
+	if doc, err := dbc.(*DB).FindByKey(ctx, "test", key); err != nosql.ErrNotFound {
 		t.Errorf("record not deleted - error: %v key: %v doc: %v", err, key, doc)
 	}
 	err = dbc.Close()

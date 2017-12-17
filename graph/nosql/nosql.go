@@ -3,9 +3,8 @@ package nosql
 import (
 	"context"
 	"errors"
-	"time"
-
 	"github.com/pborman/uuid"
+	"time"
 )
 
 var (
@@ -33,15 +32,15 @@ func KeyFrom(fields []string, doc Document) Key {
 }
 
 type Database interface {
-	Insert(col string, key Key, d Document) (Key, error)
-	FindByKey(col string, key Key) (Document, error)
+	Insert(ctx context.Context, col string, key Key, d Document) (Key, error)
+	FindByKey(ctx context.Context, col string, key Key) (Document, error)
 	Query(col string) Query
 	Update(col string, key Key) Update
 	Delete(col string) Delete
 	// EnsureIndex
 	//
 	// Should create collection if it not exists
-	EnsureIndex(col string, primary Index, secondary []Index) error
+	EnsureIndex(ctx context.Context, col string, primary Index, secondary []Index) error
 	Close() error
 }
 
@@ -90,6 +89,60 @@ type DocIterator interface {
 	Close() error
 	Key() Key
 	Doc() Document
+}
+
+// BatchInsert returns a streaming writer for database or emulates it if database has no support for batch inserts.
+func BatchInsert(db Database, col string) DocWriter {
+	if bi, ok := db.(BatchInserter); ok {
+		return bi.BatchInsert(col)
+	}
+	return &seqInsert{db: db, col: col}
+}
+
+type seqInsert struct {
+	db   Database
+	col  string
+	keys []Key
+	err  error
+}
+
+func (w *seqInsert) WriteDoc(ctx context.Context, key Key, d Document) error {
+	key, err := w.db.Insert(ctx, w.col, key, d)
+	if err != nil {
+		w.err = err
+		return err
+	}
+	w.keys = append(w.keys, key)
+	return nil
+}
+
+func (w *seqInsert) Flush(ctx context.Context) error {
+	return w.err
+}
+
+func (w *seqInsert) Keys() []Key {
+	return w.keys
+}
+
+func (w *seqInsert) Close() error {
+	return w.err
+}
+
+type DocWriter interface {
+	// WriteDoc prepares document to be written. Write becomes valid only after Flush.
+	WriteDoc(ctx context.Context, key Key, d Document) error
+	// Flush waits for all writes to complete.
+	Flush(ctx context.Context) error
+	// Keys returns a list of already inserted documents.
+	// Might be less then a number of written documents until Flush is called.
+	Keys() []Key
+	// Close closes writer and discards any unflushed documents.
+	Close() error
+}
+
+// BatchInserter is an optional interface for databases that can insert documents in batches.
+type BatchInserter interface {
+	BatchInsert(col string) DocWriter
 }
 
 type IndexType int
