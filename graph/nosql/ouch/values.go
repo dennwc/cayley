@@ -3,7 +3,6 @@ package ouch
 import (
 	"encoding/base64"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -105,39 +104,6 @@ func toOuchDoc(col, id, rev string, d nosql.Document) map[string]interface{} {
 			}
 		} else {
 			m[k] = toOuchValue(k, v)
-		}
-	}
-
-	// roundtriptest TODO remove!
-	if false {
-		rt := fromOuchDoc(m)
-		seen := make(map[string]bool)
-		for k, v := range d {
-			seen[k] = true
-			switch k {
-			case collectionField, idField, revField:
-				//ignore
-			default:
-				if !reflect.DeepEqual(v, rt[k]) {
-					tim, isT := v.(nosql.Time)
-					if isT {
-						if !time.Time(tim).Equal(time.Time(rt[k].(nosql.Time))) {
-							fmt.Printf("DEBUG nosql round-trip 1 times not equal for %#v %#v %#v\n", k, v, rt[k])
-						}
-					} else {
-						fmt.Printf("DEBUG nosql round-trip 1 failed for %#v %#v %#v\n", k, v, rt[k])
-					}
-				}
-			}
-		}
-		for k, v := range rt {
-			if !seen[k] {
-				if k != "_rev" {
-					if !reflect.DeepEqual(v, d[k]) {
-						fmt.Printf("DEBUG nosql round-trip 2 failed for %#v %#v %#v\n", k, v, d[k])
-					}
-				}
-			}
 		}
 	}
 
