@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/cayleygraph/cayley/graph"
 	"github.com/cayleygraph/cayley/graph/nosql"
@@ -96,52 +95,6 @@ func makeOuch(t testing.TB) (nosql.Database, graph.Options, func()) {
 				t.Fatal(err)
 			}
 		}
-	}
-}
-
-var allsorts = nosql.Document{
-	"Vnil": nil,
-	"VDocument": nosql.Document{
-		"val":   nosql.String("test"),
-		"iri":   nosql.Bool(true),
-		"bnode": nosql.Bool(false),
-	},
-	"VKey":    nosql.Key{"1", "2", "3"}.Value(),
-	"VString": nosql.String("TEST"),
-	"VInt":    nosql.Int(42),
-	"VFloat":  nosql.Float(42.42),
-	"VBool":   nosql.Bool(true),
-	"VTime":   nosql.Time(time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)),
-	"VBytes":  nosql.Bytes{1, 2, 3, 4},
-}
-
-// TestInsertDelete does very basic testing
-func TestInsertDelete(t *testing.T) {
-	ctx := context.TODO()
-	dbc, _, cleanup := makeOuch(testing.TB(t))
-	defer cleanup()
-
-	dbc.(*DB).EnsureIndex(ctx, "test", nosql.Index{
-		Fields: []string{"Vkey"},
-		Type:   nosql.StringExact,
-	}, nil)
-
-	key, err := dbc.Insert(ctx, "test", nil, allsorts)
-	if err != nil {
-		t.Error("insert error", err)
-	}
-	if err := dbc.(*DB).checkDoc("test", key, allsorts); err != nil {
-		t.Error(err)
-	}
-	if err := dbc.Delete("test").Keys(key).Do(context.TODO()); err != nil {
-		t.Error(err)
-	}
-	if doc, err := dbc.(*DB).FindByKey(ctx, "test", key); err != nosql.ErrNotFound {
-		t.Errorf("record not deleted - error: %v key: %v doc: %v", err, key, doc)
-	}
-	err = dbc.Close()
-	if err != nil {
-		t.Error("DB close error", err)
 	}
 }
 

@@ -297,7 +297,8 @@ func (q *Query) buildFilters() nosql.Query {
 				test = "$eq"
 			case nosql.NotEqual:
 				if boolVal, isBool := testValue.(bool); isBool && boolVal && runtime.GOARCH != "js" {
-					// swap the test (required to make it work for missing values in CouchDB)
+					// Swap the logic of the test, which is required to make it work for missing values in CouchDB.
+					// Sadly, this same formulation does not work for PouchDB, as that does not allow $or.
 					test = "$or"
 					testValue = []interface{}{
 						map[string]interface{}{"$eq": false}, // it was $ne true

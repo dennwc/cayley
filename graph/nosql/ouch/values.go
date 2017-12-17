@@ -83,25 +83,6 @@ func toOuchDoc(col, id, rev string, d nosql.Document) map[string]interface{} {
 				subPath := k + keySeparator + subK
 				m[subPath] = toOuchValue(subPath, subV)
 			}
-
-			// if true {
-			// 	// TODO - review: these fields from the nosql nodeValue type
-			// 	// used by the test code compare_typed_values
-			// 	// $ne comparitor does not work correctly for missing fields
-			// 	for _, nodeValueField := range []string{"iri", "bnode"} {
-			// 		subPath := k + keySeparator + nodeValueField
-			// 		if _, exists := m[subPath]; !exists {
-			// 			m[subPath] = false
-			// 		}
-			// 	}
-			// 	// NOTE: these fields do not seem to be required to make the tests work, but may be required in the real world!
-			// 	// for _, nodeValueField := range []string{"type", "lang", "val"} {
-			// 	// 	subPath := k + keySeparator + nodeValueField
-			// 	// 	if _, exists := m[subPath]; !exists {
-			// 	// 		m[subPath] = ""
-			// 	// 	}
-			// 	// }
-			// }
 		} else {
 			m[k] = toOuchValue(k, v)
 		}
