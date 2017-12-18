@@ -102,28 +102,9 @@ func (db *DB) EnsureIndex(ctx context.Context, col string, primary nosql.Index, 
 		return fmt.Errorf("unsupported type of primary index: %v", primary.Type)
 	}
 
-	// Kludge to index nodes.Names|val ... TODO make more elegant
-	switch col {
-	case "nodes":
-		db.colls[col] = collection{
-			primary: primary,
-			secondary: append(
-				secondary,
-				nosql.Index{
-					Fields: []string{"Name"},
-					Type:   primary.Type,
-				},
-				nosql.Index{
-					Fields: []string{"Name|val"},
-					Type:   primary.Type,
-				}),
-		}
-	// TODO does "log" collection require a further index?
-	default:
-		db.colls[col] = collection{
-			primary:   primary,
-			secondary: secondary,
-		}
+	db.colls[col] = collection{
+		primary:   primary,
+		secondary: secondary,
 	}
 
 	if err := db.db.CreateIndex(ctx, collectionIndex, collectionIndex,
@@ -133,7 +114,7 @@ func (db *DB) EnsureIndex(ctx context.Context, col string, primary nosql.Index, 
 		return err
 	}
 
-	// NOTE the field of the primary index is always "id", so need not create an index
+	// NOTE the field of the primary index is always "_id", so need not create an index
 
 	for k, v := range db.colls[col].secondary {
 		snam := fmt.Sprintf(secondaryIndexFmt, col, k)
@@ -239,7 +220,7 @@ func (db *DB) Query(col string) nosql.Query {
 		pathFilters: make(map[string][]nosql.FieldFilter),
 		ouchQuery: map[string]interface{}{
 			"selector": map[string]interface{}{},
-			"limit":    1000000, // million row limit, default is 25
+			"limit":    1000000, // million row limit, default is 25 TODO is 1M enough?
 		},
 	}
 	if col != "" {
@@ -301,8 +282,8 @@ func (q *Query) buildFilters() nosql.Query {
 					// Sadly, this same formulation does not work for PouchDB, as that does not allow $or.
 					test = "$or"
 					testValue = []interface{}{
-						map[string]interface{}{"$eq": false}, // it was $ne true
-						map[string]interface{}{"$exists": false},
+						map[string]interface{}{"$eq": false},     // it was $ne true
+						map[string]interface{}{"$exists": false}, // non-existence => false
 					}
 				} else {
 					test = "$ne"
